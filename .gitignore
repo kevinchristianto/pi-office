@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.pi-office-token
+*.log
+playwright-report/
+test-results/
+screenshots/
+.env
+.env.*
