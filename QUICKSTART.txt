@@ -1,0 +1,38 @@
+PI OFFICE · WINDOWS QUICK START
+
+1. Install Node.js 24 LTS from https://nodejs.org/ if needed.
+2. Extract the pi-office folder or clone the repository somewhere private.
+   For a Git clone, run npm ci and npm run build in that folder first.
+3. Double-click START-OFFICE.cmd. Keep its window open.
+4. Open http://127.0.0.1:4317 in your browser.
+5. Choose Explore demo to look around, or connect a real Pi session:
+
+   Open PowerShell in your project folder and run:
+   & 'C:\path\to\pi-office\CONNECT-PI.cmd'
+
+   Replace the path with your extracted app folder. Do this for each
+   Pi session you want to see. Pi itself must already be installed.
+
+A release ZIP with prebuilt dist/ does not need npm install to run.
+A source/Git checkout needs npm ci and npm run build first.
+This is a local, view-only MVP. It never controls your agents.
+Close the bridge window / press Ctrl+C to stop the office; Pi keeps working.
+
+WHAT'S VERIFIED
+Production build, frontend/observer typechecks, 23 backend/model/animation
+tests and 41 UI/movement/geometry regressions passed in Linux.
+
+WHAT STILL NEEDS A LOCAL SMOKE TEST
+Real Windows + Pi operation, WebGL visuals and browser gestures have not
+been verified here. The cloud browser runtime could not execute the app.
+Blender asset previews are included and are not browser screenshots.
+See TESTING.md for the complete test record.
+
+Some child tool/cost/outcome fields are not exposed by the current
+pi-subagents fleet API. Missing information is shown as unavailable.
+Only sessions explicitly launched with the observer can appear.
+
+Prefer using an already-open Pi session? README.md explains the one-time
+global extension setting and /reload alternative, without CONNECT-PI.cmd.
+
+README.md contains full setup, architecture, limits and troubleshooting.

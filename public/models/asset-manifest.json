@@ -1,0 +1,224 @@
+{
+  "units": "metres",
+  "up": "+Y",
+  "agentForward": "-Z",
+  "chairForward": "-Z",
+  "deskFront": "+Z",
+  "animations": [
+    "Idle",
+    "Walk",
+    "Work",
+    "Wave",
+    "WaveSeated",
+    "IdleSeated"
+  ],
+  "authorship": "Original procedural geometry authored for Pi Office. No external asset downloads.",
+  "assets": {
+    "desk": {
+      "file": "desk.glb",
+      "root": "DeskRoot",
+      "sizeXYZ": [
+        1.82,
+        1.458,
+        0.9
+      ],
+      "minXYZ": [
+        -0.91,
+        0.004,
+        -0.45
+      ],
+      "maxXYZ": [
+        0.91,
+        1.462,
+        0.45
+      ],
+      "meshes": 15,
+      "bytes": 981904
+    },
+    "chair": {
+      "file": "chair.glb",
+      "root": "ChairRoot",
+      "sizeXYZ": [
+        0.852,
+        1.143,
+        0.874
+      ],
+      "minXYZ": [
+        -0.399,
+        0.003,
+        -0.445
+      ],
+      "maxXYZ": [
+        0.453,
+        1.146,
+        0.429
+      ],
+      "meshes": 4,
+      "bytes": 569832
+    },
+    "agent": {
+      "file": "agent.glb",
+      "root": "AgentRoot",
+      "sizeXYZ": [
+        0.648,
+        1.734,
+        0.34
+      ],
+      "minXYZ": [
+        -0.324,
+        0.008,
+        -0.181
+      ],
+      "maxXYZ": [
+        0.324,
+        1.742,
+        0.159
+      ],
+      "meshes": 34,
+      "bytes": 1280096
+    },
+    "plant": {
+      "file": "plant.glb",
+      "root": "PlantRoot",
+      "sizeXYZ": [
+        1.143,
+        1.375,
+        1.224
+      ],
+      "minXYZ": [
+        -0.601,
+        0.015,
+        -0.562
+      ],
+      "maxXYZ": [
+        0.542,
+        1.39,
+        0.662
+      ],
+      "meshes": 5,
+      "bytes": 446468
+    },
+    "bookshelf": {
+      "file": "bookshelf.glb",
+      "root": "BookshelfRoot",
+      "sizeXYZ": [
+        1.48,
+        1.923,
+        0.41
+      ],
+      "minXYZ": [
+        -0.74,
+        0.0,
+        -0.205
+      ],
+      "maxXYZ": [
+        0.74,
+        1.923,
+        0.205
+      ],
+      "meshes": 11,
+      "bytes": 810612
+    },
+    "sofa": {
+      "file": "sofa.glb",
+      "root": "SofaRoot",
+      "sizeXYZ": [
+        2.391,
+        1.298,
+        2.322
+      ],
+      "minXYZ": [
+        -1.178,
+        -0.327,
+        -1.174
+      ],
+      "maxXYZ": [
+        1.214,
+        0.971,
+        1.148
+      ],
+      "meshes": 4,
+      "bytes": 193728
+    },
+    "floorlamp": {
+      "file": "floorlamp.glb",
+      "root": "FloorLampRoot",
+      "sizeXYZ": [
+        0.859,
+        1.739,
+        0.478
+      ],
+      "minXYZ": [
+        -0.23,
+        0.003,
+        -0.239
+      ],
+      "maxXYZ": [
+        0.629,
+        1.741,
+        0.239
+      ],
+      "meshes": 6,
+      "bytes": 825428
+    },
+    "coffeetable": {
+      "file": "coffeetable.glb",
+      "root": "CoffeeTableRoot",
+      "sizeXYZ": [
+        0.98,
+        0.531,
+        0.98
+      ],
+      "minXYZ": [
+        -0.49,
+        0.01,
+        -0.49
+      ],
+      "maxXYZ": [
+        0.49,
+        0.542,
+        0.49
+      ],
+      "meshes": 5,
+      "bytes": 138424
+    }
+  },
+  "agent": {
+    "height": 1.734,
+    "root": "AgentRoot",
+    "pelvis": "Body",
+    "standingPelvisY": 0.84,
+    "seatedPelvisY": 0.55,
+    "leftIsPositiveX": true,
+    "jointNames": [
+      "Body",
+      "Head",
+      "UpperArm.L",
+      "LowerArm.L",
+      "Hand.L",
+      "UpperLeg.L",
+      "LowerLeg.L",
+      "Foot.L",
+      "UpperArm.R",
+      "LowerArm.R",
+      "Hand.R",
+      "UpperLeg.R",
+      "LowerLeg.R",
+      "Foot.R"
+    ],
+    "rotationNote": "Use GLTF animation clips when possible. GLTF X drives flexion. Work is a complete seated typing pose. All meshes are individually parented to explicit joint nodes; no skinning. Material Agent_Shirt is the primary recolor surface.",
+    "deskChairOffsetZ": 0.74,
+    "clipDurationsSeconds": {
+      "Idle": 2,
+      "Walk": 1,
+      "Work": 1,
+      "Wave": 2,
+      "WaveSeated": 2,
+      "IdleSeated": 2
+    },
+    "seatedUpperLegFlexionRadians": 1.32,
+    "seatedLowerLegFlexionRadians": -1.32,
+    "typingHandHeightMetres": 0.84,
+    "rootPlaneNote": "Standing shoes ~8 mm above Y=0; seated feet rest at the floor."
+  }
+}
