@@ -80,7 +80,7 @@ function Asset({
     />
   );
 }
-function Character({
+export function Character({
   agent,
   desk,
   roomId,
@@ -112,19 +112,26 @@ function Character({
         n.material = Array.isArray(n.material)
           ? n.material.map((m) => m.clone())
           : n.material.clone();
-        const materials = Array.isArray(n.material) ? n.material : [n.material];
-        for (const mat of materials)
-          if (
-            /shirt|sweater|jacket|cloth/i.test(mat.name) &&
-            (mat as THREE.MeshStandardMaterial).color
-          )
-            (mat as THREE.MeshStandardMaterial).color.set(
-              palettes[index % palettes.length],
-            );
       }
     });
     return model;
-  }, [scene, index]);
+  }, [scene]);
+  useEffect(() => {
+    rig.traverse((node) => {
+      if (!(node instanceof THREE.Mesh)) return;
+      const materials = Array.isArray(node.material)
+        ? node.material
+        : [node.material];
+      for (const material of materials)
+        if (
+          /shirt|sweater|jacket|cloth/i.test(material.name) &&
+          (material as THREE.MeshStandardMaterial).color
+        )
+          (material as THREE.MeshStandardMaterial).color.set(
+            palettes[index % palettes.length],
+          );
+    });
+  }, [rig, index]);
   const mixer = useMemo(() => new THREE.AnimationMixer(rig), [rig]);
   const actions = useMemo(
     () =>
@@ -136,7 +143,7 @@ function Character({
       ),
     [mixer, animations],
   );
-  const currentClip = useRef("");
+  const currentAction = useRef<THREE.AnimationAction | null>(null);
   const joints = useMemo(
     () =>
       Object.fromEntries(
@@ -215,13 +222,15 @@ function Character({
     [agent.id, mixer, positions, reservations, roomId],
   );
   const setPose = (name: string) => {
-    if (currentClip.current === name) return;
     const next = actions[name];
+    // A clip name can survive a replaced mixer or stopped action. Compare the
+    // actual action and its scheduling so a fresh rig always starts playback.
+    if (currentAction.current === next && next?.isScheduled()) return;
     if (next) {
       for (const action of Object.values(actions)) action.fadeOut(0.2);
       next.reset().fadeIn(0.2).play();
     }
-    currentClip.current = name;
+    currentAction.current = next || null;
   };
   useFrame(({ clock, camera }, rawDelta) => {
     const delta = Math.min(rawDelta, 0.05);

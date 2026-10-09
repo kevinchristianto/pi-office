@@ -12,7 +12,7 @@ Date: 2026-10-09. Tested in a Linux cloud workspace with Node 24.19.0. No access
   - 14 observer, state, protocol, authentication, origin/Host, SSE and production-bundle checks
   - All eight original GLB files parsed by the actual Three.js GLTFLoader; finite geometry and embedded buffers with no remote asset dependencies
   - Character animation clips loaded and evaluated by the actual Three.js AnimationMixer; correct standing/seated pelvis positions and finite transforms for all eleven clips, including state-specific thinking, waiting, error, completion and offline poses
-- 64 Vitest tests:
+- 68 Vitest tests:
   - 5 actual React UI interaction tests with the WebGL scene mocked: initially closed panels, demo/live separation, repeated inspection/activity/dismissal, search, visual commands, follow cancellation, room switching, guide interruptions, live SSE and disconnect state
   - 13 label/camera regressions: fixed-size label configuration and bounded text; actual perspective-camera projection of all room-bound corners across four viewport sizes and one, two and four rooms
   - 22 room/route/cubicle geometry tests: chair-safe exits, complete path-segment collision checks against desks, chair backs and every low partition, bounded desk windows, distinct lounge points and repeated round trips
@@ -21,6 +21,9 @@ Date: 2026-10-09. Tested in a Linux cloud workspace with Node 24.19.0. No access
   - 7 activity-bubble tests: reported data, missing fields, hover/focus/touch selection, repeated dismissal, fixed scaling, visibility tiers and reduced-motion classes
   - 2 reduced-motion preference tests: OS preference changes and listener cleanup
   - 1 static-mesh batching test: reduced draw calls without changing transformed geometry bounds
+  - 4 character-runtime regressions: actual React Three Fiber reconciliation/useFrame with the shipped GLB and AnimationMixer; repeated room-focus/reindex/back transitions, replacement rigs, stopped-action recovery, state transitions, reduced-motion freeze/resume and static offline pose. Renderer output and DOM bubbles are stubbed, so these are not browser/WebGL pixel tests.
+
+The animation regression tests were also run against the pre-fix component: focus/reindex and replacement-rig cases failed, confirming coverage of the published freeze defect. Palette changes now keep the character rig/mixer stable, and playback tracks action identity and scheduling rather than only clip names.
 
 ## Rendered and visually inspected
 
