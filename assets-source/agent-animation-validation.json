@@ -1,0 +1,195 @@
+{
+  "file": "public/models/agent.glb",
+  "bytes": 1454524,
+  "meshCount": 34,
+  "jointCount": 14,
+  "clips": [
+    {
+      "name": "Idle",
+      "channels": 15,
+      "framesChecked": 49,
+      "durationSeconds": 2.0,
+      "minXYZ": [
+        -0.324,
+        0.0075,
+        -0.181
+      ],
+      "maxXYZ": [
+        0.324,
+        1.7499,
+        0.1603
+      ],
+      "loopSeamMaxComponentDifference": 0.0
+    },
+    {
+      "name": "Walk",
+      "channels": 15,
+      "framesChecked": 25,
+      "durationSeconds": 1.0,
+      "minXYZ": [
+        -0.3242,
+        0.0105,
+        -0.5291
+      ],
+      "maxXYZ": [
+        0.3242,
+        1.7649,
+        0.5701
+      ],
+      "loopSeamMaxComponentDifference": 0.0
+    },
+    {
+      "name": "Work",
+      "channels": 15,
+      "framesChecked": 25,
+      "durationSeconds": 1.0,
+      "minXYZ": [
+        -0.324,
+        -0.0018,
+        -0.5641
+      ],
+      "maxXYZ": [
+        0.324,
+        1.4514,
+        0.1726
+      ],
+      "loopSeamMaxComponentDifference": 0.0
+    },
+    {
+      "name": "Wave",
+      "channels": 15,
+      "framesChecked": 49,
+      "durationSeconds": 2.0,
+      "minXYZ": [
+        -0.861,
+        0.0075,
+        -0.181
+      ],
+      "maxXYZ": [
+        0.324,
+        1.8058,
+        0.1599
+      ],
+      "loopSeamMaxComponentDifference": 0
+    },
+    {
+      "name": "WaveSeated",
+      "channels": 15,
+      "framesChecked": 49,
+      "durationSeconds": 2.0,
+      "minXYZ": [
+        -0.8649,
+        -0.0018,
+        -0.5641
+      ],
+      "maxXYZ": [
+        0.324,
+        1.5219,
+        0.1599
+      ],
+      "loopSeamMaxComponentDifference": 0
+    },
+    {
+      "name": "IdleSeated",
+      "channels": 15,
+      "framesChecked": 49,
+      "durationSeconds": 2.0,
+      "minXYZ": [
+        -0.324,
+        -0.0018,
+        -0.5621
+      ],
+      "maxXYZ": [
+        0.324,
+        1.4514,
+        0.1726
+      ],
+      "loopSeamMaxComponentDifference": 0.0
+    },
+    {
+      "name": "ThinkSeated",
+      "channels": 15,
+      "framesChecked": 145,
+      "durationSeconds": 6.0,
+      "minXYZ": [
+        -0.324,
+        -0.001,
+        -0.5621
+      ],
+      "maxXYZ": [
+        0.324,
+        1.4617,
+        0.1517
+      ],
+      "loopSeamMaxComponentDifference": 0.0
+    },
+    {
+      "name": "WaitSeated",
+      "channels": 15,
+      "framesChecked": 145,
+      "durationSeconds": 6.0,
+      "minXYZ": [
+        -0.324,
+        -0.001,
+        -0.5639
+      ],
+      "maxXYZ": [
+        0.324,
+        1.4536,
+        0.1544
+      ],
+      "loopSeamMaxComponentDifference": 0.0
+    },
+    {
+      "name": "ErrorSeated",
+      "channels": 15,
+      "framesChecked": 121,
+      "durationSeconds": 5.0,
+      "minXYZ": [
+        -0.324,
+        -0.001,
+        -0.5578
+      ],
+      "maxXYZ": [
+        0.324,
+        1.4536,
+        0.1495
+      ],
+      "loopSeamMaxComponentDifference": 0
+    },
+    {
+      "name": "DoneSeated",
+      "channels": 15,
+      "framesChecked": 145,
+      "durationSeconds": 6.0,
+      "minXYZ": [
+        -0.3527,
+        -0.001,
+        -0.5621
+      ],
+      "maxXYZ": [
+        0.324,
+        1.4535,
+        0.1562
+      ],
+      "loopSeamMaxComponentDifference": 0
+    },
+    {
+      "name": "OfflineSeated",
+      "channels": 15,
+      "framesChecked": 97,
+      "durationSeconds": 4.0,
+      "minXYZ": [
+        -0.324,
+        0.0002,
+        -0.554
+      ],
+      "maxXYZ": [
+        0.324,
+        1.4524,
+        0.1501
+      ],
+      "loopSeamMaxComponentDifference": 0
+    }
+  ]
+}

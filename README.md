@@ -1,10 +1,10 @@
 # Pi Office
 
-A full-window, local 3D office for your Pi coding agents. Each participating session gets a room. Original modeled furniture and articulated residents bring the office to life; live state, task, current tool, model, reported usage and activity remain available when you select an agent.
+A full-window, local 3D office for your Pi coding agents. Each participating session gets an airy cubicle section. Original modeled furniture and articulated residents bring the office to life; live state, task, current tool, model, reported usage and activity remain available when you select an agent.
 
 **View-only MVP. Native Windows runtime. No cloud account, telemetry, external fonts or remote assets.** The initial view is live and empty until you connect a session. Demo mode is explicitly labeled sample data and never mixed with live data.
 
-Existing installation? See [UPDATING.md](UPDATING.md) to preserve your token and extension path while applying the 0.2.0 immersive redesign.
+Existing installation? See [UPDATING.md](UPDATING.md) to preserve your token and extension path while applying the 0.3.0 living-cubicle update.
 
 ## Windows quick start
 
@@ -57,9 +57,12 @@ Before starting the bridge, run `$env:PI_OFFICE_PORT = '4318'`, then `npm start`
 - A stroll follows a desk-to-lounge route and returns automatically. The back-arrow returns early. Walkers queue per room to avoid opposing traffic in the aisle.
 - Follow tracks the selected resident. Dragging the camera, pressing Escape, or Reset camera cancels following.
 - Drag to orbit, scroll to zoom, right-drag or WASD/arrow keys to pan. Fullscreen is optional.
-- The room selector focuses a session or shows the first four rooms. Each room shows up to six desks for performance. Every retained agent remains accessible in the roster; selecting an overflow agent brings its desk into view.
+- The styled project selector focuses a session or shows the first four sections. Each section shows up to six desks for performance. Every retained agent remains accessible in the roster; selecting an overflow agent brings its desk into view.
+- Work types; thinking, waiting, idle, error, completion and offline states have distinct restrained poses. Completion reacts once and settles. These reflect reported state, not an inferred task result.
+- OS reduced-motion preference freezes ambient/state gestures. Requested moves change location without an animated traverse, and camera following moves without easing.
+- Low 1.15 m partitions define roomy open-front cubicles. Clear row and side aisles exceed 1.2 m; routes are tested against tables, chairs and every partition.
 - Live is the default. Explore demo uses clearly labeled sample agents; demo values never mix with actual sessions.
-- Labels stay a fixed small screen size and appear only when selected or hovered.
+- Activity bubbles stay a fixed screen size: state/tool/task nearby, a compact marker in the overview, and hidden at far distances. Hover or keyboard-focus one for task, tool, model and observation freshness. Click/tap selects the agent; Escape or an outside click dismisses the hover details.
 
 ### Connect already-open Pi sessions without a special launcher
 
@@ -94,7 +97,7 @@ Pi session + explicit observer extension
 - `bridge/server.mjs`: Node built-ins only; binds IPv4 loopback, authenticates ingestion and serves the production bundle.
 - `bridge/state.mjs`: bounded normalized snapshots, retention and stale/offline projection.
 - `src/`: React 19 + React Three Fiber / Three.js, perspective room world, collision-safe visual routes and camera following.
-- `public/models/`: eight original local GLB assets, embedded materials and six complete articulated character animation clips.
+- `public/models/`: eight original local GLB assets, embedded materials and eleven complete articulated character animation clips.
 - `assets-source/`: original Blender generation/export scripts and compressed editable `.blend` scenes.
 - `asset-renders/`: inspected Blender previews, clearly distinct from browser screenshots.
 - `test/backend*.test.mjs`: protocol, state, origin/auth/static serving, SSE and actual observer lifecycle/RPC contract tests.
@@ -154,6 +157,6 @@ Built as a view-only Pi observer with visual character interactions. Actual agen
 
 ## Asset previews
 
-![Original office asset-review scene rendered in Blender, not a browser screenshot](asset-renders/blender-room-overview.png)
+![Current cubicle geometry rendered in Blender, not a browser screenshot](asset-renders/blender-cubicle-layout.png)
 
-The editable source and export scripts are included. See `assets-source/README.md` and `public/models/asset-manifest.json` for dimensions, animation names and authorship. The preview is a composed asset-review scene, not the exact runtime multi-session layout.
+The editable source and export scripts are included. See `assets-source/README.md` and `public/models/asset-manifest.json` for dimensions, animation names and authorship. The cubicle preview uses exported runtime desk/partition coordinates. Lighting is Blender-rendered and the browser HUD/bubbles are not present; it is not a browser screenshot.

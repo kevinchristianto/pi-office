@@ -1,0 +1,203 @@
+.room-selector {
+  position: relative;
+  flex: 0 1 270px;
+  width: clamp(130px, 22vw, 270px);
+  min-width: 0;
+  max-width: calc(100vw - 28px);
+  color: #f0f0de;
+}
+
+.room-selector-trigger {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 10px 13px;
+  border: 1px solid #d1d4b73d;
+  border-radius: 11px;
+  background: #263c32eb;
+  box-shadow:
+    0 4px 16px #11271c18,
+    inset 0 1px #e7e7cb08;
+  backdrop-filter: blur(16px);
+  text-align: left;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.room-selector-trigger:hover,
+.room-selector.is-open .room-selector-trigger {
+  border-color: #d8ddbb80;
+  background: #354c3ef5;
+  filter: none;
+}
+
+.room-selector-trigger:focus-visible {
+  outline: 2px solid #e7dcb4;
+  outline-offset: 3px;
+}
+
+.room-selector-caption {
+  color: #bccab0;
+  font-size: 8px;
+  letter-spacing: 1.5px;
+}
+
+.room-selector-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.room-selector-swatch {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px #f5f3d529;
+}
+
+.room-selector-chevron {
+  color: #c5d0ae;
+  transition: transform 120ms ease;
+}
+
+.room-selector.is-open .room-selector-chevron {
+  transform: rotate(180deg);
+}
+
+.room-selector-menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 8px);
+  right: 0;
+  width: max(100%, 258px);
+  max-width: min(360px, calc(100vw - 28px));
+  padding: 7px;
+  background: #23382ef5;
+  border: 1px solid #c8d1ae54;
+  border-radius: 12px;
+  box-shadow:
+    0 14px 35px #0e211b4d,
+    inset 0 1px #e7e7cb08;
+  backdrop-filter: blur(20px);
+}
+
+.room-selector-heading {
+  padding: 6px 9px 10px;
+  color: #bdc7a7;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+}
+
+.room-selector-listbox {
+  max-height: min(340px, calc(100dvh - 150px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #6e8265 transparent;
+  outline: none;
+}
+
+.room-selector-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 43px;
+  padding: 10px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.room-selector-option + .room-selector-option {
+  margin-top: 3px;
+}
+
+.room-selector-option[aria-selected="true"] {
+  background: #c7d0a917;
+}
+
+.room-selector-option.is-active {
+  background: #b7c49a2b;
+  border-color: #cdd7b36b;
+}
+
+.room-selector-listbox:focus-visible .room-selector-option.is-active {
+  border-color: #e2d9b2;
+}
+
+.room-selector-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.room-selector-option-label,
+.room-selector-description {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-selector-option-label {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.room-selector-description {
+  margin-top: 3px;
+  color: #bdcbb1;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.room-selector-check {
+  flex: 0 0 14px;
+  color: #e5dfb6;
+}
+
+@media (max-width: 1000px) {
+  .room-selector-caption {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .room-selector {
+    flex-basis: 145px;
+    width: 145px;
+  }
+
+  .room-selector-trigger {
+    gap: 6px;
+    min-height: 39px;
+    padding: 9px 10px;
+    border-radius: 10px;
+  }
+
+  .room-selector-value {
+    font-size: 10px;
+  }
+
+  .room-selector-menu {
+    /* Leave room for the header controls to the selector's right. */
+    width: max(100%, min(258px, calc(100vw - 112px)));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-selector-trigger,
+  .room-selector-chevron {
+    transition: none;
+  }
+}

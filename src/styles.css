@@ -1027,3 +1027,244 @@ dd {
     gap: 6px;
   }
 }
+
+/* Fixed-pixel, sparse status bubbles. No camera distance scaling. */
+.agent-bubble {
+  position: relative;
+  max-width: 190px;
+  pointer-events: auto;
+  filter: drop-shadow(0 3px 6px #15332325);
+  user-select: none;
+}
+.bubble-trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 190px;
+  height: 42px;
+  padding: 6px 10px 6px 7px;
+  background: #234032ed;
+  border: 1px solid #e0e8c65c;
+  border-radius: 11px;
+  box-shadow: inset 0 1px 0 #f2f5df14;
+  color: #e6edd4;
+  text-align: left;
+  position: relative;
+}
+.bubble-trigger:after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: #234032;
+  bottom: -4px;
+  left: calc(50% - 4px);
+  transform: rotate(45deg);
+  border-right: 1px solid #e0e8c65c;
+  border-bottom: 1px solid #e0e8c65c;
+}
+.bubble-status {
+  font-size: 12px;
+  line-height: 20px;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--state-color);
+  background: #d5e7c514;
+}
+.bubble-copy {
+  min-width: 0;
+  display: block;
+}
+.bubble-copy > strong {
+  display: flex;
+  gap: 7px;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bubble-copy small {
+  font-size: 7px;
+  font-weight: 400;
+  color: var(--state-color);
+  white-space: nowrap;
+}
+.bubble-copy > span {
+  display: block;
+  font-size: 8px;
+  line-height: 12px;
+  color: #b2c6a6;
+  max-width: 138px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-bubble.selected .bubble-trigger {
+  background: #e5ebc9;
+  color: #2f5137;
+  border-color: #fcffe0;
+}
+.agent-bubble.selected .bubble-trigger:after {
+  background: #e5ebc9;
+  border-color: #fcffe0;
+}
+.agent-bubble.selected .bubble-copy > span {
+  color: #6b8062;
+}
+.agent-bubble.selected .bubble-copy small {
+  color: #547149;
+}
+.agent-bubble.selected .bubble-status {
+  background: #345a3214;
+  color: #54764e;
+}
+.agent-bubble.is-dot .bubble-trigger {
+  padding: 3px;
+  border-radius: 50%;
+  height: 28px;
+  width: 28px;
+  max-width: 28px;
+}
+.agent-bubble.is-dot .bubble-status {
+  height: 20px;
+  min-width: 20px;
+  line-height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+}
+.agent-bubble.is-dot .bubble-trigger:after {
+  display: none;
+}
+.bubble-status.state-working {
+  animation: bubble-work 2.5s ease-in-out infinite;
+}
+.bubble-status.state-thinking {
+  animation: bubble-think 3.8s ease-in-out infinite;
+}
+.bubble-status.state-waiting {
+  animation: bubble-think 6s ease-in-out infinite;
+}
+.bubble-status.state-error {
+  color: #e7a393;
+  background: #ba665524;
+}
+.bubble-status.state-offline,
+.bubble-status.state-stale {
+  opacity: 0.6;
+}
+.bubble-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 242px;
+  max-width: calc(100vw - 30px);
+  padding: 13px 14px;
+  background: #1c352bf5;
+  border: 1px solid #d2e1b969;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px #102a2250;
+  backdrop-filter: blur(15px);
+  pointer-events: none;
+  color: #e1e8d0;
+}
+.tooltip-below .bubble-tooltip {
+  bottom: auto;
+  top: calc(100% + 12px);
+}
+.align-left .bubble-tooltip {
+  left: 0;
+  transform: none;
+}
+.align-right .bubble-tooltip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.bubble-tooltip-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.bubble-tooltip-heading > strong {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bubble-tooltip-heading > span {
+  font-size: 8px;
+  color: var(--state-color);
+  flex-shrink: 0;
+}
+.bubble-tooltip > p {
+  font-size: 10px;
+  line-height: 1.6;
+  color: #c3d1b7;
+  margin: 10px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.bubble-tooltip dl {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.bubble-tooltip dl > div {
+  font-size: 8px;
+  gap: 12px;
+  margin-top: 7px;
+  line-height: 1.4;
+}
+.bubble-tooltip dt {
+  color: #849f83;
+}
+.bubble-tooltip dd {
+  color: #b2c9a8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+.bubble-tooltip-foot {
+  font-size: 7px;
+  color: #759475;
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid #cadebd24;
+}
+.bubble-visual {
+  font-size: 8px;
+  color: #d4c79b;
+  margin-top: 10px;
+}
+.agent-bubble.reduced .bubble-status {
+  animation: none;
+}
+@keyframes bubble-work {
+  50% {
+    background: #d5e7c52c;
+  }
+}
+@keyframes bubble-think {
+  50% {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bubble-status {
+    animation: none !important;
+  }
+}

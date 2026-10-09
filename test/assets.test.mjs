@@ -64,6 +64,11 @@ test("articulated character clips load, seat, stand, walk and wave with finite t
     "Wave",
     "WaveSeated",
     "IdleSeated",
+    "ThinkSeated",
+    "WaitSeated",
+    "ErrorSeated",
+    "DoneSeated",
+    "OfflineSeated",
   ]) {
     const clip = model.animations.find((c) => c.name === name);
     assert.ok(clip, name);
@@ -77,7 +82,18 @@ test("articulated character clips load, seat, stand, walk and wave with finite t
     const y = body.getWorldPosition(new THREE.Vector3()).y;
     assert.ok(Number.isFinite(y));
     assert.ok(
-      ["Work", "WaveSeated", "IdleSeated"].includes(name) ? y < 0.65 : y > 0.75,
+      [
+        "Work",
+        "WaveSeated",
+        "IdleSeated",
+        "ThinkSeated",
+        "WaitSeated",
+        "ErrorSeated",
+        "DoneSeated",
+        "OfflineSeated",
+      ].includes(name)
+        ? y < 0.65
+        : y > 0.75,
       `${name} pelvis ${y}`,
     );
     model.scene.traverse((n) =>

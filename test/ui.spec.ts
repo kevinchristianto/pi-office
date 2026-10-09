@@ -54,11 +54,11 @@ test("selection, visual movement, follow cancellation and details repeatedly wor
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Return agent to desk" }).click();
   await page.getByRole("button", { name: "Reset camera" }).click();
-  const label = page.locator(".desk-label").first();
+  const label = page.locator(".bubble-trigger").first();
   await expect(label).toBeVisible();
   const box = await label.boundingBox();
-  expect(box!.height).toBeLessThanOrEqual(28);
-  expect(box!.width).toBeLessThanOrEqual(157);
+  expect(box!.height).toBeLessThanOrEqual(43);
+  expect(box!.width).toBeLessThanOrEqual(191);
   expect(errors).toEqual([]);
   await page.screenshot({ path: "screenshots/immersive-agent-selected.png" });
 });
@@ -67,9 +67,8 @@ test("room switching, modal interruptions and mobile controls stay usable", asyn
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await demo(page);
-  await page
-    .getByRole("combobox", { name: "Choose session room" })
-    .selectOption("demo-api");
+  await page.getByRole("button", { name: "Choose session room" }).click();
+  await page.getByRole("option", { name: /API migration/ }).click();
   for (let i = 0; i < 2; i++) {
     await page.getByRole("button", { name: "Open guide" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();

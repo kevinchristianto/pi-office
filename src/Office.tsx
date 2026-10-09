@@ -18,7 +18,9 @@ import {
   type DeskLayout,
   type RoomLayout,
 } from "./world";
-import AgentLabel from "./AgentLabel";
+import AgentBubble from "./AgentBubble";
+import { bubbleMode, presentation } from "./agentPresentation";
+import { useReducedMotion } from "./useReducedMotion";
 import { stateColor } from "./state";
 import { mergeStaticModel } from "./models";
 import { createMotion, requestMotion, stepMotion } from "./motion";
@@ -163,13 +165,46 @@ function Character({
   );
   const motion = useRef(createMotion());
   const [hovered, setHovered] = useState(false);
+  const reduced = useReducedMotion();
+  const [bubble, setBubble] = useState<{
+    mode: "hidden" | "dot" | "compact" | "detail";
+    placement: "above" | "below";
+    alignment: "left" | "center" | "right";
+  }>({ mode: "compact", placement: "above", alignment: "center" });
+  const lastBubble = useRef("");
+  const bubbleTick = useRef(0);
+  const stateStarted = useRef({
+    state: agent.state,
+    time: performance.now() / 1000,
+  });
+  if (stateStarted.current.state !== agent.state)
+    stateStarted.current = {
+      state: agent.state,
+      time: performance.now() / 1000,
+    };
   const [visual, setVisual] = useState("");
   const total = useMemo(() => routeLength(desk.route), [desk]);
   const prevVisual = useRef("");
   useEffect(() => {
     if (!command || command.id !== agent.id) return;
+    if (reduced) {
+      const m = motion.current;
+      if (command.type === "walk") {
+        m.mode = "lounge";
+        m.distance = total;
+        m.dwell = Infinity;
+        m.pending = false;
+      } else if (command.type === "return") {
+        m.mode = "seated";
+        m.distance = 0;
+        m.pending = false;
+      } else m.waveUntil = performance.now() / 1000 + 2.6;
+      if (reservations.current.get(roomId) === agent.id)
+        reservations.current.delete(roomId);
+      return;
+    }
     requestMotion(motion.current, command.type, performance.now() / 1000);
-  }, [command, agent.id]);
+  }, [command, agent.id, reduced, total, reservations, roomId]);
   useEffect(
     () => () => {
       mixer.stopAllAction();
@@ -188,7 +223,7 @@ function Character({
     }
     currentClip.current = name;
   };
-  useFrame(({ clock }, rawDelta) => {
+  useFrame(({ clock, camera }, rawDelta) => {
     const delta = Math.min(rawDelta, 0.05);
     const m = motion.current;
     if (!group.current) return;
@@ -217,24 +252,67 @@ function Character({
       ) - Math.PI;
     group.current.rotation.y += angle * Math.min(1, delta * 12);
     const waving = m.waveUntil > now;
-    const active = ["working", "thinking"].includes(agent.state);
-    const pose = walking
-      ? "walk"
-      : waving
-        ? m.mode === "seated" && actions.waveseated
-          ? "waveseated"
-          : "wave"
-        : m.mode === "seated"
-          ? active
-            ? "work"
-            : actions.idleseated
-              ? "idleseated"
-              : "work"
-          : "idle";
+    const reportedClip = presentation(agent).clip;
+    const transientFinished =
+      ["completed", "done", "error"].includes(agent.state) &&
+      now - stateStarted.current.time > 5.8;
+    const stateClip = transientFinished ? "idleseated" : reportedClip;
+    const wanted = reduced
+      ? m.mode === "seated"
+        ? "idleseated"
+        : "idle"
+      : walking
+        ? "walk"
+        : waving
+          ? m.mode === "seated"
+            ? "waveseated"
+            : "wave"
+          : m.mode === "seated"
+            ? stateClip
+            : "idle";
+    const pose = actions[wanted]
+      ? wanted
+      : m.mode === "seated"
+        ? "idleseated"
+        : "idle";
     setPose(pose);
-    mixer.update(delta);
+    if (reduced) {
+      const action = actions[pose];
+      if (action) {
+        action.fadeIn(0);
+        action.time = 0;
+        action.paused = true;
+      }
+      mixer.update(0);
+    } else {
+      for (const action of Object.values(actions)) action.paused = false;
+      mixer.update(delta);
+    }
+    if (clock.elapsedTime - bubbleTick.current > 0.12) {
+      bubbleTick.current = clock.elapsedTime;
+      const anchor = new THREE.Vector3(point[0], 1.92, point[1]);
+      const projection = anchor.clone().project(camera);
+      const inView =
+        projection.z >= -1 &&
+        projection.z <= 1 &&
+        Math.abs(projection.x) < 1.05 &&
+        Math.abs(projection.y) < 1.05;
+      const mode = bubbleMode(
+        camera.position.distanceTo(anchor),
+        selected || hovered,
+        inView,
+      );
+      const placement = projection.y > 0.45 ? "below" : "above";
+      const alignment =
+        projection.x > 0.6 ? "right" : projection.x < -0.6 ? "left" : "center";
+      const key = [mode, placement, alignment].join(":");
+      if (key !== lastBubble.current) {
+        lastBubble.current = key;
+        setBubble({ mode, placement, alignment });
+      }
+    }
     if (!actions[pose]) {
-      const t = clock.elapsedTime;
+      const t = reduced ? 0 : clock.elapsedTime;
       const joint = (name: string, x = 0, z = 0) => {
         const j = joints[name];
         if (j) {
@@ -331,25 +409,18 @@ function Character({
           />
         </mesh>
       </group>
-      {(selected || hovered) && (
-        <AgentLabel
-          name={agent.name}
-          color={stateColor(agent.state)}
-          state={agent.state}
-          selected={selected}
-          dim={false}
-        />
-      )}{" "}
-      {selected && visual && (
-        <Html
-          center
-          position={[0, 2.15, 0]}
-          zIndexRange={[9, 0]}
-          style={{ pointerEvents: "none" }}
-        >
-          <div className="agent-action-hint">{visual} · visual only</div>
-        </Html>
-      )}
+      <AgentBubble
+        agent={agent}
+        selected={selected}
+        hovered={hovered}
+        mode={bubble.mode}
+        placement={bubble.placement}
+        alignment={bubble.alignment}
+        onSelect={onSelect}
+        onHover={setHovered}
+        visual={visual}
+        reduced={reduced}
+      />
     </group>
   );
 }
@@ -401,11 +472,7 @@ function Room({
         size={[12.2, 3.1, 0.18]}
         color="#e4dfc8"
       />
-      <Solid
-        position={[x - 6, 1.55, -2]}
-        size={[0.18, 3.1, 6]}
-        color="#d9d4bd"
-      />
+
       <Solid
         position={[x, 0.12, -4.82]}
         size={[12, 0.16, 0.12]}
@@ -462,6 +529,30 @@ function Room({
       <Asset name="floorlamp" position={[x - 5.25, 0.05, 3.4]} />
       <Asset name="sofa" position={[x - 2.8, 0.05, 4.65]} rotation={Math.PI} />
       <Asset name="plant" position={[x + 4.8, 0.05, 4.65]} scale={0.7} />
+      {layout.partitions.map((panel, i) => (
+        <group key={`partition-${i}`}>
+          <Solid
+            position={[
+              panel.center[0],
+              panel.height / 2 + 0.045,
+              panel.center[1],
+            ]}
+            size={[panel.width, panel.height, panel.depth]}
+            color={accent}
+            roughness={0.96}
+          />
+          <Solid
+            position={[panel.center[0], panel.height + 0.065, panel.center[1]]}
+            size={[panel.width + 0.025, 0.045, panel.depth + 0.025]}
+            color="#a99875"
+          />
+          <Solid
+            position={[panel.center[0], 0.105, panel.center[1]]}
+            size={[panel.width, 0.1, panel.depth + 0.03]}
+            color="#777e68"
+          />
+        </group>
+      ))}
       <Html
         center
         position={[x, 2.75, -4.77]}
@@ -531,6 +622,7 @@ function CameraRig({
   onStopFollow: () => void;
 }) {
   const { camera, size, gl } = useThree();
+  const reduced = useReducedMotion();
   const keys = useRef(new Set<string>());
   useEffect(() => {
     const fit = fitOfficeCamera(size.width, size.height, count);
@@ -549,7 +641,7 @@ function CameraRig({
     const keydown = (e: KeyboardEvent) => {
       if (
         (e.target as HTMLElement)?.closest(
-          'input,select,textarea,[role="dialog"]',
+          'input,select,textarea,button,[role="dialog"],[role="listbox"]',
         )
       )
         return;
@@ -589,7 +681,7 @@ function CameraRig({
       if (position) {
         const target = position.clone().add(new THREE.Vector3(0, 0.85, 0));
         const desired = target.clone().add(new THREE.Vector3(4.3, 3.4, 5.6));
-        const t = 1 - Math.exp(-delta * 3);
+        const t = reduced ? 1 : 1 - Math.exp(-delta * 3);
         camera.position.lerp(desired, t);
         c.target.lerp(target, t);
         c.update();

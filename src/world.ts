@@ -1,7 +1,8 @@
 /**
  * Deterministic, view-only office geometry. Coordinates are [x, z] on floor y=0.
- * Each session has its own room; the visible desks are a window onto its roster,
- * never the authoritative set of agents in a session.
+ * Sessions occupy open sections of one shared office; the legacy RoomLayout
+ * name describes a floor section, not enclosing walls. Visible desks are a
+ * window onto each session roster, never its authoritative set of agents.
  */
 export type WorldPoint = [number, number];
 export type Route = readonly WorldPoint[];
@@ -15,12 +16,26 @@ export const DESK_DEPTH = 0.9;
 export const WALKER_RADIUS = 0.28;
 export const CHAIR_RADIUS = 0.35;
 export const CHAIR_BACK_OFFSET = 0.25;
+export const CUBICLE_HEIGHT = 1.15;
+export const CUBICLE_WIDTH = 2.7;
+export const CUBICLE_SIDE_DEPTH = 1.7;
+export const CUBICLE_THICKNESS = 0.08;
 
 export interface RoomBounds {
   minX: number;
   maxX: number;
   minZ: number;
   maxZ: number;
+}
+
+/** One low, floor-mounted fabric panel; its Y center is height / 2. */
+export interface CubiclePartition {
+  kind: "back" | "left" | "right";
+  center: WorldPoint;
+  width: number;
+  depth: number;
+  height: number;
+  bounds: RoomBounds;
 }
 
 export interface DeskLayout {
@@ -35,7 +50,9 @@ export interface DeskLayout {
   aisle: WorldPoint;
   /** Distinct standing destination in the front lounge. */
   lounge: WorldPoint;
-  /** Seat to lounge, with axis-aligned, table-safe segments. */
+  /** Low, open-front cubicle panels belonging to this workstation. */
+  partitions: CubiclePartition[];
+  /** Seat to lounge, with axis-aligned, furniture-safe segments. */
   route: WorldPoint[];
 }
 
@@ -45,6 +62,8 @@ export interface RoomLayout {
   center: WorldPoint;
   bounds: RoomBounds;
   desks: DeskLayout[];
+  /** Flattened workstation panels; these never enclose a session section. */
+  partitions: CubiclePartition[];
   lounge: WorldPoint;
   mainAisleX: number;
   /** Total roster size, including agents outside the current desk window. */
@@ -58,10 +77,50 @@ function nonNegativeInteger(value: number, name: string) {
   }
 }
 
+/** Three low panels leave a full-width front opening toward +Z. */
+export function createCubiclePartitions(desk: WorldPoint): CubiclePartition[] {
+  assertFiniteRoute([desk]);
+  const [x, z] = desk;
+  const panel = (
+    kind: CubiclePartition["kind"],
+    center: WorldPoint,
+    width: number,
+    depth: number,
+  ): CubiclePartition => ({
+    kind,
+    center,
+    width,
+    depth,
+    height: CUBICLE_HEIGHT,
+    bounds: {
+      minX: center[0] - width / 2,
+      maxX: center[0] + width / 2,
+      minZ: center[1] - depth / 2,
+      maxZ: center[1] + depth / 2,
+    },
+  });
+  return [
+    panel("back", [x, z - 0.75], CUBICLE_WIDTH, CUBICLE_THICKNESS),
+    panel(
+      "left",
+      [x - CUBICLE_WIDTH / 2, z + 0.1],
+      CUBICLE_THICKNESS,
+      CUBICLE_SIDE_DEPTH,
+    ),
+    panel(
+      "right",
+      [x + CUBICLE_WIDTH / 2, z + 0.1],
+      CUBICLE_THICKNESS,
+      CUBICLE_SIDE_DEPTH,
+    ),
+  ];
+}
+
 /**
- * Room indices are stable positions along X, separated by ROOM_GAP.
+ * Session-section indices are stable positions along X, separated by ROOM_GAP.
  * Render table geometry no larger than DESK_WIDTH by DESK_DEPTH at `desk`.
  * Keep the row aisles, main aisle, and lounge destinations clear of furniture.
+ * Use the returned panel dimensions for trim too; wider trim needs new clearance.
  * Multiple walkers need an animation-level reservation/spacing policy; these
  * routes guarantee furniture clearance, not inter-character collision handling.
  */
@@ -73,7 +132,9 @@ export function createRoomLayout(
   nonNegativeInteger(index, "Room index");
   nonNegativeInteger(agentCount, "Agent count");
   const centerX = index * (ROOM_WIDTH + ROOM_GAP);
-  const mainAisleX = centerX + 5;
+  // The rightmost side panel reaches local X=4.79. This line clears it
+  // by 0.56 units and leaves 0.65 units to the section boundary.
+  const mainAisleX = centerX + 5.35;
   const count = Math.min(agentCount, MAX_VISIBLE_DESKS);
   const desks: DeskLayout[] = Array.from({ length: count }, (_, deskIndex) => {
     const x = centerX + [-3.4, 0, 3.4][deskIndex % 3];
@@ -91,6 +152,7 @@ export function createRoomLayout(
       exit,
       aisle,
       lounge,
+      partitions: createCubiclePartitions(desk),
       route: [
         [...seat],
         [...exit],
@@ -112,6 +174,7 @@ export function createRoomLayout(
       maxZ: ROOM_DEPTH / 2,
     },
     desks,
+    partitions: desks.flatMap((desk) => desk.partitions),
     lounge: [centerX, 3.8],
     mainAisleX,
     agentCount,

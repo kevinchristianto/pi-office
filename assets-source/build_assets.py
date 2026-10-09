@@ -463,5 +463,7 @@ scene.camera=close;scene.render.resolution_x=900;scene.render.resolution_y=800;s
 scene.camera=portrait;scene.render.resolution_x=700;scene.render.resolution_y=900;scene.render.filepath=os.path.join(REND,'blender-character-closeup.png');bpy.ops.render.render(write_still=True)
 scene.camera=cam
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(BASE,'assets-source','pi-office-studio.blend'),compress=True)
+exec(compile(open(os.path.join(BASE,'assets-source','embed_state_clips.py')).read(),os.path.join(BASE,'assets-source','embed_state_clips.py'),'exec'),{'__file__':os.path.join(BASE,'assets-source','embed_state_clips.py')})
 exec(compile(open(os.path.join(BASE,'assets-source','render_action_sheet.py')).read(),os.path.join(BASE,'assets-source','render_action_sheet.py'),'exec'),{'__file__':os.path.join(BASE,'assets-source','render_action_sheet.py')})
+exec(compile(open(os.path.join(BASE,'assets-source','render_state_sheet.py')).read(),os.path.join(BASE,'assets-source','render_state_sheet.py'),'exec'),{'__file__':os.path.join(BASE,'assets-source','render_state_sheet.py')})
 print('ALL_ASSETS_AND_RENDERS_COMPLETE',flush=True)

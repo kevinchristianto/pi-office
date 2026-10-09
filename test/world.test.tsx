@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   createRoomLayout,
+  createCubiclePartitions,
+  CUBICLE_HEIGHT,
+  CUBICLE_WIDTH,
+  CUBICLE_SIDE_DEPTH,
+  CUBICLE_THICKNESS,
   CHAIR_BACK_OFFSET,
   CHAIR_RADIUS,
   DESK_DEPTH,
@@ -51,7 +56,7 @@ function insideRoom(point: WorldPoint, bounds: RoomBounds, inset = 0) {
   expect(point[1]).toBeLessThanOrEqual(bounds.maxZ - inset);
 }
 
-describe("session room layout", () => {
+describe("open session section layout", () => {
   it("is deterministic, independent, and does not mutate other layouts", () => {
     const first = createRoomLayout("session-a", 0, 6);
     const again = createRoomLayout("session-a", 0, 6);
@@ -70,7 +75,7 @@ describe("session room layout", () => {
     }
   });
 
-  it("gives arbitrary sessions distinct equally sized rooms with clear gaps", () => {
+  it("gives arbitrary sessions distinct equally sized floor sections with clear gaps", () => {
     const rooms = Array.from({ length: 100 }, (_, i) =>
       createRoomLayout(`session-${i}`, i, 6),
     );
@@ -127,6 +132,145 @@ describe("session room layout", () => {
       expect(() => createRoomLayout("session", 0, invalid)).toThrow(RangeError);
     },
   );
+});
+
+describe("airy open-front cubicles", () => {
+  it("builds exactly three low panels per visible desk and no front wall", () => {
+    for (const count of [0, 1, 3, 6, 40]) {
+      const section = createRoomLayout("open-office", 0, count);
+      expect(section.partitions).toHaveLength(Math.min(count, 6) * 3);
+      expect(section.partitions).toEqual(
+        section.desks.flatMap((desk) => desk.partitions),
+      );
+      for (const desk of section.desks) {
+        const [back, left, right] = desk.partitions;
+        expect(desk.partitions.map((panel) => panel.kind)).toEqual([
+          "back",
+          "left",
+          "right",
+        ]);
+        expect(back.center).toEqual([desk.desk[0], desk.desk[1] - 0.75]);
+        expect(back.width).toBe(CUBICLE_WIDTH);
+        expect(back.depth).toBe(CUBICLE_THICKNESS);
+        for (const [panel, sign] of [
+          [left, -1],
+          [right, 1],
+        ] as const) {
+          expect(panel.center[0]).toBeCloseTo(desk.desk[0] + sign * 1.35);
+          expect(panel.center[1]).toBeCloseTo(desk.desk[1] + 0.1);
+          expect(panel.width).toBe(CUBICLE_THICKNESS);
+          expect(panel.depth).toBe(CUBICLE_SIDE_DEPTH);
+          expect(panel.bounds.minZ).toBeCloseTo(desk.desk[1] - 0.75);
+          expect(panel.bounds.maxZ).toBeCloseTo(desk.desk[1] + 0.95);
+        }
+        // A 2.62-unit open front, with panels below standing head height.
+        expect(right.bounds.minX - left.bounds.maxX).toBeCloseTo(2.62);
+        for (const panel of desk.partitions) {
+          expect(panel.height).toBe(CUBICLE_HEIGHT);
+          expect(panel.height).toBe(1.15);
+          expect(panel.bounds.maxX - panel.bounds.minX).toBeCloseTo(
+            panel.width,
+          );
+          expect(panel.bounds.maxZ - panel.bounds.minZ).toBeCloseTo(
+            panel.depth,
+          );
+          insideRoom([panel.bounds.minX, panel.bounds.minZ], section.bounds);
+          insideRoom([panel.bounds.maxX, panel.bounds.maxZ], section.bounds);
+        }
+      }
+    }
+  });
+
+  it("retains desk spacing and at least 1.2 units of clear primary aisles", () => {
+    const section = createRoomLayout("generous-aisles", 0, 6);
+    expect(section.desks[1].desk[0] - section.desks[0].desk[0]).toBeCloseTo(
+      3.4,
+    );
+    expect(section.desks[3].desk[1] - section.desks[0].desk[1]).toBe(3);
+    const firstRowSide = section.desks[0].partitions.find(
+      (panel) => panel.kind === "right",
+    )!;
+    const secondRowBack = section.desks[3].partitions.find(
+      (panel) => panel.kind === "back",
+    )!;
+    expect(
+      secondRowBack.bounds.minZ - firstRowSide.bounds.maxZ,
+    ).toBeGreaterThanOrEqual(1.2);
+    const rightEdge = Math.max(
+      ...section.partitions.map((panel) => panel.bounds.maxX),
+    );
+    expect(section.bounds.maxX - rightEdge).toBeGreaterThanOrEqual(1.2);
+    expect(section.mainAisleX - rightEdge).toBeGreaterThan(WALKER_RADIUS);
+    expect(section.bounds.maxX - section.mainAisleX).toBeGreaterThan(
+      WALKER_RADIUS,
+    );
+    for (const desk of section.desks) {
+      expect(desk.seat[1] - desk.desk[1]).toBeCloseTo(0.74);
+      expect(desk.exit[0] - desk.seat[0]).toBeCloseTo(0.75);
+      expect(desk.aisle[1] - desk.desk[1]).toBeCloseTo(1.8);
+    }
+  });
+
+  it("translates independent panel geometry into its session section", () => {
+    const origin: WorldPoint = [2, 3];
+    const original = createCubiclePartitions(origin);
+    const translated = createCubiclePartitions([102, 3]);
+    original.forEach((panel, i) => {
+      expect(translated[i].center[0] - panel.center[0]).toBeCloseTo(100);
+      expect(translated[i].center[1]).toBe(panel.center[1]);
+      expect(translated[i].bounds.minX - panel.bounds.minX).toBeCloseTo(100);
+      expect(translated[i].bounds.maxX - panel.bounds.maxX).toBeCloseTo(100);
+      expect(translated[i].bounds.minZ).toBe(panel.bounds.minZ);
+      expect(translated[i].bounds.maxZ).toBe(panel.bounds.maxZ);
+    });
+    original[0].center[0] = 999;
+    expect(origin).toEqual([2, 3]);
+    expect(createCubiclePartitions(origin)[0].center[0]).toBe(2);
+    expect(() => createCubiclePartitions([NaN, 0])).toThrow(RangeError);
+  });
+
+  it("keeps every complete walking segment clear of expanded partition AABBs", () => {
+    for (const index of [0, 1, 12, 1000]) {
+      const section = createRoomLayout("panel-clearance", index, 6);
+      for (const desk of section.desks) {
+        for (const route of [desk.route, reverseRoute(desk.route)]) {
+          for (let i = 1; i < route.length; i++) {
+            for (const panel of section.partitions) {
+              expect(
+                segmentIntersectsBox(route[i - 1], route[i], {
+                  minX: panel.bounds.minX - WALKER_RADIUS,
+                  maxX: panel.bounds.maxX + WALKER_RADIUS,
+                  minZ: panel.bounds.minZ - WALKER_RADIUS,
+                  maxZ: panel.bounds.maxZ + WALKER_RADIUS,
+                }),
+              ).toBe(false);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it("would detect the previous main aisle clipping the outer cubicle panel", () => {
+    const section = createRoomLayout("regression-aisle", 0, 6);
+    const panel = section.desks[5].partitions.find(
+      (panel) => panel.kind === "right",
+    )!;
+    const expanded = {
+      minX: panel.bounds.minX - WALKER_RADIUS,
+      maxX: panel.bounds.maxX + WALKER_RADIUS,
+      minZ: panel.bounds.minZ - WALKER_RADIUS,
+      maxZ: panel.bounds.maxZ + WALKER_RADIUS,
+    };
+    expect(segmentIntersectsBox([5, -0.2], [5, 3.8], expanded)).toBe(true);
+    expect(
+      segmentIntersectsBox(
+        [section.mainAisleX, -0.2],
+        [section.mainAisleX, 3.8],
+        expanded,
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("safe walking routes", () => {

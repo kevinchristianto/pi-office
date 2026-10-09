@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import Office from "./Office";
+import RoomSelector from "./RoomSelector";
 import { stateColor } from "./state";
 import { demo } from "./demo";
 import { useOfficeData } from "./useOfficeData";
@@ -181,29 +182,27 @@ export default function App() {
                 : "OFFLINE"}
         </div>
         <div className="header-spacer" />
-        <div className="room-switch">
-          <span>ROOM</span>
-          <select
-            aria-label="Choose session room"
-            value={focusSession}
-            onChange={(e) => {
-              setFocusSession(e.target.value);
-              setSelected(null);
-              setFollow(null);
-              setReset((n) => n + 1);
-            }}
-          >
-            <option value="all">
-              {sessions.length > 4 ? "First 4 rooms" : "Whole office"}
-            </option>
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={12} />
-        </div>
+        <RoomSelector
+          value={focusSession}
+          options={[
+            {
+              value: "all",
+              label: sessions.length > 4 ? "First 4 sections" : "Whole office",
+              description: "Shared office overview",
+            },
+            ...sessions.map((session) => ({
+              value: session.id,
+              label: session.name,
+              description: `${session.agents.length} ${session.agents.length === 1 ? "agent" : "agents"} · project section`,
+            })),
+          ]}
+          onChange={(value) => {
+            setFocusSession(value);
+            setSelected(null);
+            setFollow(null);
+            setReset((n) => n + 1);
+          }}
+        />
         <button
           className={`hud-button ${roster ? "chosen" : ""}`}
           aria-label="Open agent roster"
@@ -553,8 +552,8 @@ export default function App() {
               </button>
             </div>
             <p>
-              Each Pi session gets its own room. Click an agent to inspect,
-              wave, take a stroll, or follow. These actions animate the
+              Each Pi session gets an airy cubicle section. Click an agent to
+              inspect, wave, take a stroll, or follow. These actions animate the
               character; they never send instructions to Pi.
             </p>
             <ol>

@@ -30,12 +30,10 @@ beforeEach(() => {
   vi.stubGlobal("EventSource", FakeEvents);
   vi.stubGlobal(
     "fetch",
-    vi
-      .fn()
-      .mockResolvedValue({
-        ok: true,
-        json: async () => ({ sessions: [], updatedAt: Date.now() }),
-      }),
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ sessions: [], updatedAt: Date.now() }),
+    }),
   );
 });
 afterEach(() => {
@@ -104,10 +102,8 @@ describe("immersive office controls with WebGL mocked", () => {
     expect(world.props.follow).toBeNull();
     await u.click(screen.getByRole("button", { name: "Return agent to desk" }));
     expect(world.props.command.type).toBe("return");
-    await u.selectOptions(
-      screen.getByRole("combobox", { name: "Choose session room" }),
-      "demo-api",
-    );
+    await u.click(screen.getByRole("button", { name: "Choose session room" }));
+    await u.click(screen.getByRole("option", { name: /API migration/ }));
     expect(world.props.sessions).toHaveLength(1);
     expect(world.props.sessions[0].id).toBe("demo-api");
     expect(screen.queryByRole("region", { name: "Selected agent" })).toBeNull();

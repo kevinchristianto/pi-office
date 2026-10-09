@@ -10,7 +10,12 @@
     "Work",
     "Wave",
     "WaveSeated",
-    "IdleSeated"
+    "IdleSeated",
+    "ThinkSeated",
+    "WaitSeated",
+    "ErrorSeated",
+    "DoneSeated",
+    "OfflineSeated"
   ],
   "authorship": "Original procedural geometry authored for Pi Office. No external asset downloads.",
   "assets": {
@@ -75,7 +80,7 @@
         0.159
       ],
       "meshes": 34,
-      "bytes": 1280096
+      "bytes": 1454524
     },
     "plant": {
       "file": "plant.glb",
@@ -214,11 +219,33 @@
       "Work": 1,
       "Wave": 2,
       "WaveSeated": 2,
-      "IdleSeated": 2
+      "IdleSeated": 2,
+      "ThinkSeated": 6,
+      "WaitSeated": 6,
+      "ErrorSeated": 5,
+      "DoneSeated": 6,
+      "OfflineSeated": 4
     },
     "seatedUpperLegFlexionRadians": 1.32,
     "seatedLowerLegFlexionRadians": -1.32,
     "typingHandHeightMetres": 0.84,
-    "rootPlaneNote": "Standing shoes ~8 mm above Y=0; seated feet rest at the floor."
+    "rootPlaneNote": "Standing shoes ~8 mm above Y=0; seated feet rest at the floor.",
+    "stateAnimationMap": {
+      "working": "Work",
+      "thinking": "ThinkSeated",
+      "waiting": "WaitSeated",
+      "idle": "IdleSeated",
+      "error": "ErrorSeated",
+      "done": "DoneSeated",
+      "offline": "OfflineSeated"
+    },
+    "animationPlaybackNotes": {
+      "DoneSeated": "Play once on state entry, then IdleSeated while done remains.",
+      "ErrorSeated": "Brief restrained shake then calm. Play once and hold or loop slowly.",
+      "ThinkSeated": "Seamless six-second cycle with a held chin gesture.",
+      "WaitSeated": "Seamless six-second cycle with a brief wrist check.",
+      "OfflineSeated": "Exactly static pose. Safe to sample once and stop its mixer.",
+      "reducedMotion": "Freeze state pose; root movement is application-owned."
+    }
   }
 }

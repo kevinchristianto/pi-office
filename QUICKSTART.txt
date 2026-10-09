@@ -20,7 +20,7 @@ Close the bridge window / press Ctrl+C to stop the office; Pi keeps working.
 
 WHAT'S VERIFIED
 Production build, frontend/observer typechecks, 23 backend/model/animation
-tests and 41 UI/movement/geometry regressions passed in Linux.
+tests and 64 UI/movement/geometry regressions passed in Linux.
 
 WHAT STILL NEEDS A LOCAL SMOKE TEST
 Real Windows + Pi operation, WebGL visuals and browser gestures have not

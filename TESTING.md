@@ -1,4 +1,4 @@
-# Verification record · immersive office 0.2.0
+# Verification record · immersive office 0.3.0
 
 Date: 2026-10-09. Tested in a Linux cloud workspace with Node 24.19.0. No access to or changes on the user's Windows computer.
 
@@ -11,24 +11,29 @@ Date: 2026-10-09. Tested in a Linux cloud workspace with Node 24.19.0. No access
 - 23 Node unit/integration tests:
   - 14 observer, state, protocol, authentication, origin/Host, SSE and production-bundle checks
   - All eight original GLB files parsed by the actual Three.js GLTFLoader; finite geometry and embedded buffers with no remote asset dependencies
-  - Character animation clips loaded and evaluated by the actual Three.js AnimationMixer; correct standing/seated pelvis positions and finite transforms for Idle, Walk, Work, Wave, WaveSeated and IdleSeated
-- 41 Vitest tests:
+  - Character animation clips loaded and evaluated by the actual Three.js AnimationMixer; correct standing/seated pelvis positions and finite transforms for all eleven clips, including state-specific thinking, waiting, error, completion and offline poses
+- 64 Vitest tests:
   - 5 actual React UI interaction tests with the WebGL scene mocked: initially closed panels, demo/live separation, repeated inspection/activity/dismissal, search, visual commands, follow cancellation, room switching, guide interruptions, live SSE and disconnect state
   - 13 label/camera regressions: fixed-size label configuration and bounded text; actual perspective-camera projection of all room-bound corners across four viewport sizes and one, two and four rooms
-  - 17 room/route geometry tests: chair-safe exits, complete path-segment collision checks against desks and chair backs, bounded desk windows, distinct lounge points and repeated round trips
+  - 22 room/route/cubicle geometry tests: chair-safe exits, complete path-segment collision checks against desks, chair backs and every low partition, bounded desk windows, distinct lounge points and repeated round trips
   - 5 movement-controller tests: room-aisle reservations, queued walkers, interrupted return, bounded wave duration, independent rooms and repeated trips
+  - 9 styled-selector tests: keyboard selection, outside/Tab/Escape dismissal, focus return, repeated opening, long labels and dynamic option changes
+  - 7 activity-bubble tests: reported data, missing fields, hover/focus/touch selection, repeated dismissal, fixed scaling, visibility tiers and reduced-motion classes
+  - 2 reduced-motion preference tests: OS preference changes and listener cleanup
   - 1 static-mesh batching test: reduced draw calls without changing transformed geometry bounds
 
 ## Rendered and visually inspected
 
 The original authored assets and sample room were rendered in Blender CPU Cycles, then the actual image pixels were inspected. These are **Blender renders, not browser screenshots**:
 
-- `asset-renders/blender-room-overview.png`
+- `asset-renders/blender-cubicle-layout.png`: exact exported runtime cubicle dimensions and positions
+- `asset-renders/blender-state-animation-review.png`: actual imported state-specific GLB poses
+- `asset-renders/blender-room-overview.png`: earlier authored-asset review
 - `asset-renders/blender-workstation-closeup.png`
 - `asset-renders/blender-character-closeup.png`
 - `asset-renders/blender-animation-contact-sheet.png`
 
-They demonstrate the authored geometry/materials and character pose work. The sample room composition is an asset-review scene; it is not the exact runtime multi-session room layout or the in-browser HUD.
+They demonstrate the authored geometry/materials and character pose work. The latest cubicle preview uses runtime layout coordinates. Earlier sample room previews remain asset-review scenes. None shows the actual browser HUD, bubble layout or multi-section rendering.
 
 ## Still unverified
 
