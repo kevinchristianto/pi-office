@@ -85,3 +85,69 @@ test("room switching, modal interruptions and mobile controls stay usable", asyn
   ).toBe(true);
   await page.screenshot({ path: "screenshots/immersive-mobile.png" });
 });
+
+test("camera toolbar and focused keyboard input interrupt follow without losing selection", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await demo(page);
+  await select(page);
+  const canvas = page.getByLabel("Office camera", { exact: true });
+  await expect(canvas).toHaveAttribute("tabindex", "0");
+  for (let i = 0; i < 3; i++) {
+    await page.getByRole("button", { name: "Focus", exact: true }).click();
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await page.getByRole("button", { name: "Zoom out", exact: true }).click();
+  }
+  await page.getByRole("button", { name: "Follow", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Unfollow", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await canvas.focus();
+  await canvas.press("ArrowRight");
+  await expect(
+    page.getByRole("button", { name: "Follow", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    page.getByRole("region", { name: "Selected agent" }),
+  ).toBeVisible();
+  await canvas.press("+");
+  await canvas.press("-");
+  await canvas.press("Home");
+  await page.getByRole("button", { name: "Open guide" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Office guide" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Open guide" })).toBeFocused();
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: "screenshots/office-camera-controls.png" });
+});
+
+test.describe("touch camera controls", () => {
+  test.use({
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  test("focus, zoom and fit remain reachable on a touch viewport", async ({
+    page,
+  }) => {
+    await demo(page);
+    await select(page, "Orion");
+    await page.getByRole("button", { name: "Focus", exact: true }).tap();
+    await page.getByRole("button", { name: "Zoom in", exact: true }).tap();
+    await page.getByRole("button", { name: "Zoom out", exact: true }).tap();
+    await page.getByRole("button", { name: "Reset camera", exact: true }).tap();
+    await expect(
+      page.getByRole("region", { name: "Selected agent" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({ path: "screenshots/office-touch-controls.png" });
+  });
+});

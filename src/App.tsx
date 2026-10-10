@@ -1,15 +1,17 @@
-import { Component, useEffect, useState, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
   Check,
-  ChevronDown,
   Eye,
+  Focus,
   Footprints,
   HelpCircle,
   Hand,
   Maximize,
   MousePointer2,
+  Minus,
+  Plus,
   Radio,
   RotateCcw,
   Search,
@@ -22,7 +24,7 @@ import RoomSelector from "./RoomSelector";
 import { stateColor } from "./state";
 import { demo } from "./demo";
 import { useOfficeData } from "./useOfficeData";
-import type { Agent } from "./types";
+import type { CameraAction } from "./camera";
 const metric = (n: number | null | undefined) =>
   n == null ? "Not reported" : n.toLocaleString();
 const time = (n: number | string | undefined) =>
@@ -62,11 +64,17 @@ export default function App() {
   const [focusSession, setFocusSession] = useState("all");
   const [roster, setRoster] = useState(false);
   const [guide, setGuide] = useState(false);
+  const guideOpener = useRef<HTMLElement | null>(null);
+  const openGuide = () => {
+    guideOpener.current = document.activeElement as HTMLElement | null;
+    setGuide(true);
+  };
   const [query, setQuery] = useState("");
   const [details, setDetails] = useState(false);
   const [tab, setTab] = useState("overview");
   const [reset, setReset] = useState(0);
   const [follow, setFollow] = useState<string | null>(null);
+  const [cameraAction, setCameraAction] = useState<CameraAction | null>(null);
   const [command, setCommand] = useState<{
     id: string;
     type: "wave" | "walk" | "return";
@@ -93,16 +101,35 @@ export default function App() {
     setRoster(false);
     setFollow(null);
     const target = sessions.find((s) => s.agents.some((a) => a.id === id));
-    if (target && !shownSessions.some((s) => s.id === target.id))
+    if (target && !shownSessions.some((s) => s.id === target.id)) {
       setFocusSession(target.id);
+      setReset((n) => n + 1);
+    }
   };
   useEffect(() => {
     setSelected(null);
     setFollow(null);
     setCommand(null);
     setFocusSession("all");
+    setCameraAction(null);
+    setReset((n) => n + 1);
     setDetails(false);
   }, [mode]);
+  useEffect(() => {
+    // Live snapshots can remove a person or a project while its panel is open.
+    if (selected && !agents.some((item) => item.id === selected)) {
+      setSelected(null);
+      setDetails(false);
+      setFollow(null);
+      setCameraAction(null);
+    }
+    if (
+      focusSession !== "all" &&
+      !sessions.some((item) => item.id === focusSession)
+    ) {
+      setFocusSession("all");
+    }
+  }, [sessions, selected, focusSession]);
   useEffect(() => {
     const escape = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -117,7 +144,7 @@ export default function App() {
   }, [guide, roster, details, follow]);
   useEffect(() => {
     if (!guide) return;
-    const previous = document.activeElement as HTMLElement | null;
+    const previous = guideOpener.current;
     const trap = (event: KeyboardEvent) => {
       if (event.key !== "Tab") return;
       const buttons = Array.from(
@@ -158,6 +185,7 @@ export default function App() {
             follow={follow}
             command={command}
             onStopFollow={() => setFollow(null)}
+            cameraAction={cameraAction}
           />
         </SceneBoundary>
       </div>
@@ -215,7 +243,7 @@ export default function App() {
         <button
           className="hud-button help-button"
           aria-label="Open guide"
-          onClick={() => setGuide(true)}
+          onClick={openGuide}
         >
           <HelpCircle size={17} />
         </button>
@@ -250,7 +278,7 @@ export default function App() {
           </h1>
           <p>Connect a Pi session to bring it to life.</p>
           <div>
-            <button onClick={() => setGuide(true)}>
+            <button onClick={openGuide}>
               Connect Pi <ArrowUpRight size={13} />
             </button>
             <button className="quiet" onClick={() => setMode("demo")}>
@@ -261,24 +289,59 @@ export default function App() {
       )}
       <div className="navigation-hint">
         <MousePointer2 size={13} />
-        <span>
-          Drag to look around · Scroll to zoom · Right-drag or WASD to pan
-        </span>
+        <span>Drag to orbit · Scroll to zoom · Right-drag to pan</span>
       </div>
-      <div className="view-controls">
+      <p id="camera-instructions" className="visually-hidden">
+        Drag to orbit. Scroll or pinch to zoom. Right-drag, Shift-drag, or
+        two-finger drag to pan. Click or Tab to the office camera, then use WASD
+        or arrow keys to pan, plus and minus to zoom, or Home to fit the office.
+        Manual camera controls stop following.
+      </p>
+      <div className="view-controls" role="group" aria-label="Camera controls">
         {follow && (
-          <button className="follow-chip" onClick={() => setFollow(null)}>
+          <button
+            className="follow-chip"
+            aria-label={`Stop following ${agent?.name || "agent"}`}
+            onClick={() => setFollow(null)}
+          >
             <Eye size={13} />
             Following {agent?.name || "agent"}
             <X size={12} />
           </button>
         )}
         <button
+          aria-label="Zoom out"
+          title="Zoom out (−)"
+          onClick={() => {
+            setFollow(null);
+            setCameraAction((action) => ({
+              type: "zoom-out",
+              serial: (action?.serial || 0) + 1,
+            }));
+          }}
+        >
+          <Minus size={16} />
+        </button>
+        <button
+          aria-label="Zoom in"
+          title="Zoom in (+)"
+          onClick={() => {
+            setFollow(null);
+            setCameraAction((action) => ({
+              type: "zoom-in",
+              serial: (action?.serial || 0) + 1,
+            }));
+          }}
+        >
+          <Plus size={16} />
+        </button>
+        <button
           aria-label="Reset camera"
-          title="Reset camera"
+          title="Fit office (Home)"
           onClick={resetView}
         >
-          <RotateCcw size={17} />
+          <RotateCcw size={16} />
+          <span className="fit-label">Fit</span>
         </button>
         <button
           aria-label="Toggle fullscreen"
@@ -333,6 +396,20 @@ export default function App() {
               <Eye size={14} />
               Inspect
             </button>
+            <button
+              title="Frame this agent once"
+              onClick={() => {
+                setFollow(null);
+                setCameraAction((action) => ({
+                  type: "focus",
+                  id: agent.id,
+                  serial: (action?.serial || 0) + 1,
+                }));
+              }}
+            >
+              <Focus size={14} />
+              Focus
+            </button>
             <button onClick={() => act("wave")}>
               <Hand size={14} />
               Wave
@@ -343,6 +420,8 @@ export default function App() {
             </button>
             <button
               onClick={() => setFollow(follow === agent.id ? null : agent.id)}
+              aria-pressed={follow === agent.id}
+              title="Keep the camera with this agent; drag to stop"
               className={follow === agent.id ? "active" : ""}
             >
               <MousePointer2 size={14} />
@@ -580,10 +659,19 @@ export default function App() {
             </ol>
             <div className="guide-controls">
               <span>Drag · Orbit</span>
-              <span>Scroll · Zoom</span>
-              <span>WASD · Pan</span>
+              <span>Scroll / pinch · Zoom</span>
+              <span>Right / Shift-drag · Pan</span>
+              <span>Two-finger drag · Pan</span>
+              <span>Focus camera, then WASD / arrows · Pan</span>
+              <span>+ / − · Zoom</span>
+              <span>Home · Fit office</span>
               <span>Esc · Close / unfollow</span>
             </div>
+            <p className="guide-camera-note">
+              Click or Tab to the office for keyboard controls. Focus frames an
+              agent once; Follow moves with them. Dragging, panning, or zooming
+              returns control to you.
+            </p>
             <button className="guide-done" onClick={() => setGuide(false)}>
               Let's go <Check size={15} />
             </button>

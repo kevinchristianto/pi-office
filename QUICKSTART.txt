@@ -19,12 +19,16 @@ This is a local, view-only MVP. It never controls your agents.
 Close the bridge window / press Ctrl+C to stop the office; Pi keeps working.
 
 WHAT'S VERIFIED
-Production build, frontend/observer typechecks, 23 backend/model/animation
-tests and 64 UI/movement/geometry regressions passed in Linux.
+Production build, frontend/observer typechecks, 52 backend/model/animation
+tests and 104 UI/camera/movement/geometry regressions passed in Linux.
+All eight resident variants retain eleven evaluated animation clips.
+Hand checks cover thumb/index anatomy, typing/wave palms and wrist joins.
+Stable agent IDs choose a variant; variants may repeat in a larger roster.
 
 WHAT STILL NEEDS A LOCAL SMOKE TEST
 Real Windows + Pi operation, WebGL visuals and browser gestures have not
-been verified here. The cloud browser runtime could not execute the app.
+been verified here. The separate cloud browser could not reach the local app.
+A fresh npm ci still needs verification on the target computer.
 Blender asset previews are included and are not browser screenshots.
 See TESTING.md for the complete test record.
 

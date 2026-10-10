@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 .pi-office-token
 *.log
@@ -11,3 +11,6 @@ screenshots/
 assets-source/*.log
 *.blend1
 *.blend2
+
+__pycache__/
+*.py[cod]

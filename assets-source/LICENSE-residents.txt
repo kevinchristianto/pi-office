@@ -1,0 +1,37 @@
+SPDX-License-Identifier: CC0-1.0
+
+Pi Office resident collection
+
+The original procedural geometry, character designs, materials, asset-generation
+and review scripts, generated Blender sources, runtime resident GLBs and review
+renders in this collection are dedicated to the public domain under the
+Creative Commons CC0 1.0 Universal dedication.
+
+To the extent possible under law, the authors waive all copyright and related
+or neighboring rights in this original collection. The work is provided without
+warranty. You may copy, modify, distribute and use it, including commercially,
+without asking permission. Attribution is appreciated but not required.
+
+Canonical full legal text:
+https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+Covered files:
+- assets-source/build_residents.py
+- assets-source/render_residents.py
+- assets-source/assemble_resident_portraits.py
+- assets-source/render_hand_proof.py and assemble_hand_proof.py
+- assets-source/validate_hand_revision.py
+- assets-source/resident-hand-proof.blend
+- assets-source/agent-01.blend through agent-08.blend
+- assets-source/resident-*.json and resident-*-review.blend
+- public/models/agent-01.glb through agent-08.glb
+- public/models/agent.glb, the byte-identical compatibility alias of agent-01.glb
+- asset-renders/blender-hand-anatomy-proof.png
+- asset-renders/blender-resident-lineup.png
+- asset-renders/blender-resident-portraits.png
+- asset-renders/blender-office-residents.png (new character content)
+
+No photographs, likeness scans, downloaded character models, paid assets,
+third-party textures or external services were used to create the residents.
+The office review additionally contains the project's pre-existing original
+furniture and layout. Existing application/dependency notices remain in effect.

@@ -1,4 +1,4 @@
-# Updating to the living cubicles · 0.3.0
+# Updating to remodeled residents · 0.4.0
 
 1. Stop the Pi Office bridge with Ctrl+C. Leave your Pi sessions and observer configuration in place.
 2. Update source files in the **same app folder**. Keep `.pi-office-token` and all local configuration. Keep the `extension/pi-office.ts` path unchanged if Pi settings reference it.
@@ -9,11 +9,17 @@ There is no token rotation, Pi settings change or CONNECT-PI relaunch needed for
 
 ## What's new
 
+- Eight more natural adult resident models with individual faces, hair, skin tones and layered clothing
+- Stable ID-based appearance across sorting, selection, focus and live state changes
+- Bounded, eased camera navigation with explicit focus, follow, zoom and reset controls
+- Focus-scoped keyboard navigation, touch guidance and manual follow cancellation
+
+### Preserved from earlier versions
+
 - Airy open-front cubicles with low acoustic partitions and tested clear aisles
 - Compact activity bubbles with hover/focus details and honest missing-data/freshness labels
 - Styled, keyboard-accessible project selector with outside/Escape dismissal
 - Distinct state-specific gestures and OS reduced-motion support
-
 
 - Full-window perspective 3D world with minimal floating controls
 - A room per participating session, with the full roster available on demand

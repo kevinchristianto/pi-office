@@ -1,0 +1,197 @@
+{
+  "check": "Targeted hand pronation/chirality revision. Two hand meshes were intentionally changed; standard Blender regeneration may reorder vertices or retessellate symmetric details. Non-hand material sets are unchanged. Export retessellation count differences and bidirectional vertex-cloud deviations are reported per file. All joint rest transforms, animation sample times and animation outputs remain byte-identical except Wave/WaveSeated Hand.R rotation outputs.",
+  "handContract": {
+    "version": 2,
+    "coordinateSpace": "glTF joint-local, metres",
+    "rigLabelNote": "Legacy rig.L is +X and anatomically right; rig.R is -X and anatomically left, for forward -Z/up +Y. Names remain stable.",
+    "rest": "Palms rearward, dorsal surfaces forward, thumbs medial.",
+    "typing": "Palms down, dorsal surfaces up, thumbs toward keyboard midline.",
+    "wave": "Only rig.R Hand rotation rolls during Wave and WaveSeated to present the palm outward.",
+    "animationChanges": [
+      "Wave:Hand.R:rotation",
+      "WaveSeated:Hand.R:rotation"
+    ],
+    "unchanged": "Every other animation input/output float payload is preserved."
+  },
+  "variants": [
+    {
+      "file": "public/models/agent-01.glb",
+      "sha256": "2eb7e3a6f9fae73799746a3a7c29c1c94e3dfd307bf287e08f51dbc6c8878259",
+      "referenceSha256": "871b8ebf8fa646ec5ba6a007174695124faac9dacbde72bb27915335854563c6",
+      "bytes": 1574560,
+      "intentionallyChangedMeshes": [
+        "Hand.L.ResidentGeometry",
+        "Hand.R.ResidentGeometry"
+      ],
+      "maxNonHandVertexDeltaMetres": 0.0007602115977873759,
+      "nonHandComparisonToleranceMetres": 0.005,
+      "nonHandRetessellation": [],
+      "changedAnimationOutputs": [
+        "Wave:Hand.R:rotation",
+        "WaveSeated:Hand.R:rotation"
+      ],
+      "allOtherAnimationPayloadsIdentical": true,
+      "jointRestTransformsIdentical": true,
+      "clips": 11
+    },
+    {
+      "file": "public/models/agent-02.glb",
+      "sha256": "cec4b1f764fd3054e19f297b791edbb4cab01e661807433e551f499e5e4ecdc0",
+      "referenceSha256": "dfa80602fbcf368b912406948f2c63c36afed434d6780a7cab1ac4d7b56167be",
+      "bytes": 1351180,
+      "intentionallyChangedMeshes": [
+        "Hand.L.ResidentGeometry",
+        "Hand.R.ResidentGeometry"
+      ],
+      "maxNonHandVertexDeltaMetres": 0,
+      "nonHandComparisonToleranceMetres": 0.005,
+      "nonHandRetessellation": [],
+      "changedAnimationOutputs": [
+        "Wave:Hand.R:rotation",
+        "WaveSeated:Hand.R:rotation"
+      ],
+      "allOtherAnimationPayloadsIdentical": true,
+      "jointRestTransformsIdentical": true,
+      "clips": 11
+    },
+    {
+      "file": "public/models/agent-03.glb",
+      "sha256": "954bdbdfab4c100dbe6f8fa2de74e6c13865449bc7cf8fbcd54ba2a4071c9a4e",
+      "referenceSha256": "024c33c068660e4af6f88739e6599fa4c6b3f4c5332450c5202915628044dc6a",
+      "bytes": 1371192,
+      "intentionallyChangedMeshes": [
+        "Hand.L.ResidentGeometry",
+        "Hand.R.ResidentGeometry"
+      ],
+      "maxNonHandVertexDeltaMetres": 0,
+      "nonHandComparisonToleranceMetres": 0.005,
+      "nonHandRetessellation": [],
+      "changedAnimationOutputs": [
+        "Wave:Hand.R:rotation",
+        "WaveSeated:Hand.R:rotation"
+      ],
+      "allOtherAnimationPayloadsIdentical": true,
+      "jointRestTransformsIdentical": true,
+      "clips": 11
+    },
+    {
+      "file": "public/models/agent-04.glb",
+      "sha256": "669af59db8925f1257e5cf4d34591775874ab0a7a47bc70c55f03ae53baa99c8",
+      "referenceSha256": "7c7a0fc334a8377af82521f3ed08eda48befe8476d3344fada9d3741b354d2ae",
+      "bytes": 1764884,
+      "intentionallyChangedMeshes": [
+        "Hand.L.ResidentGeometry",
+        "Hand.R.ResidentGeometry"
+      ],
+      "maxNonHandVertexDeltaMetres": 0.0009777919744792085,
+      "nonHandComparisonToleranceMetres": 0.005,
+      "nonHandRetessellation": [],
+      "changedAnimationOutputs": [
+        "Wave:Hand.R:rotation",
+        "WaveSeated:Hand.R:rotation"
+      ],
+      "allOtherAnimationPayloadsIdentical": true,
+      "jointRestTransformsIdentical": true,
+      "clips": 11
+    },
+    {
+      "file": "public/models/agent-05.glb",
+      "sha256": "de4406732400c8ba26d21f3bd9cb768f6687b1a30efa79001bcf526d01303c88",
+      "referenceSha256": "b948c60eb213ce083c85fbf1dd2fe2d125ee5cec74a89acb52c86418d66eb1ee",
+      "bytes": 1367944,
+      "intentionallyChangedMeshes": [
+        "Hand.L.ResidentGeometry",
+        "Hand.R.ResidentGeometry"
+      ],
+      "maxNonHandVertexDeltaMetres": 0.0020880908973289177,
+      "nonHandComparisonToleranceMetres": 0.005,
+      "nonHandRetessellation": [
+        {
+          "mesh": "Head.ResidentGeometry",
+          "material": "Agent_Skin",
+          "verticesBefore": 4923,
+          "verticesAfter": 4924,
+          "indicesBefore": 27879,
+          "indicesAfter": 27885
+        },
+        {
+          "mesh": "Head.ResidentGeometry",
+          "material": "Agent_Iris",
+          "verticesBefore": 372,
+          "verticesAfter": 370,
+          "indicesBefore": 1920,
+          "indicesAfter": 1914
+        }
+      ],
+      "changedAnimationOutputs": [
+        "Wave:Hand.R:rotation",
+        "WaveSeated:Hand.R:rotation"
+      ],
+      "allOtherAnimationPayloadsIdentical": true,
+      "jointRestTransformsIdentical": true,
+      "clips": 11
+    },
+    {
+      "file": "public/models/agent-06.glb",
+      "sha256": "fb8080891b598efe45b0cbdc6de0dcd499b8c636ce8f83cfa39e9c9ef045b00b",
+      "referenceSha256": "bd81234957d9ce7f2d91943d5ee41a5cba12ccbafe9b1e2f177fc343133939e6",
+      "bytes": 1423416,
+      "intentionallyChangedMeshes": [
+        "Hand.L.ResidentGeometry",
+        "Hand.R.ResidentGeometry"
+      ],
+      "maxNonHandVertexDeltaMetres": 0,
+      "nonHandComparisonToleranceMetres": 0.005,
+      "nonHandRetessellation": [],
+      "changedAnimationOutputs": [
+        "Wave:Hand.R:rotation",
+        "WaveSeated:Hand.R:rotation"
+      ],
+      "allOtherAnimationPayloadsIdentical": true,
+      "jointRestTransformsIdentical": true,
+      "clips": 11
+    },
+    {
+      "file": "public/models/agent-07.glb",
+      "sha256": "149f67d3da530797cb3bc535c68d280b43d4c8f189d52a39f682aed3da59694e",
+      "referenceSha256": "8bf76286a55c326ac04314648b7462b58acf5bd464426c62f14b9fe8a14e1283",
+      "bytes": 1267700,
+      "intentionallyChangedMeshes": [
+        "Hand.L.ResidentGeometry",
+        "Hand.R.ResidentGeometry"
+      ],
+      "maxNonHandVertexDeltaMetres": 0.0007602115977873759,
+      "nonHandComparisonToleranceMetres": 0.005,
+      "nonHandRetessellation": [],
+      "changedAnimationOutputs": [
+        "Wave:Hand.R:rotation",
+        "WaveSeated:Hand.R:rotation"
+      ],
+      "allOtherAnimationPayloadsIdentical": true,
+      "jointRestTransformsIdentical": true,
+      "clips": 11
+    },
+    {
+      "file": "public/models/agent-08.glb",
+      "sha256": "2614f36e4aad6f95d821feb8abe80620f0c9d5c12499036413aee19b75b61cd8",
+      "referenceSha256": "44e4827abf0fffb3f64f95eaa668253cc2431cbb2463dd4e5039919e6c3d6aab",
+      "bytes": 1357344,
+      "intentionallyChangedMeshes": [
+        "Hand.L.ResidentGeometry",
+        "Hand.R.ResidentGeometry"
+      ],
+      "maxNonHandVertexDeltaMetres": 0,
+      "nonHandComparisonToleranceMetres": 0.005,
+      "nonHandRetessellation": [],
+      "changedAnimationOutputs": [
+        "Wave:Hand.R:rotation",
+        "WaveSeated:Hand.R:rotation"
+      ],
+      "allOtherAnimationPayloadsIdentical": true,
+      "jointRestTransformsIdentical": true,
+      "clips": 11
+    }
+  ],
+  "waveRollRebuildIdempotent": true,
+  "idempotenceCheck": "Two reinjections into a temporary GLB preserved exactly the corrected waving-hand quaternion payloads; no cumulative roll."
+}

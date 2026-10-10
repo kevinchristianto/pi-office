@@ -1,7 +1,7 @@
 {
   "file": "public/models/agent.glb",
-  "bytes": 1454524,
-  "meshCount": 34,
+  "bytes": 1574560,
+  "meshCount": 14,
   "jointCount": 14,
   "clips": [
     {
@@ -10,14 +10,14 @@
       "framesChecked": 49,
       "durationSeconds": 2.0,
       "minXYZ": [
-        -0.324,
-        0.0075,
-        -0.181
+        -0.3073,
+        0.01,
+        -0.1645
       ],
       "maxXYZ": [
-        0.324,
-        1.7499,
-        0.1603
+        0.3073,
+        1.7232,
+        0.1353
       ],
       "loopSeamMaxComponentDifference": 0.0
     },
@@ -27,14 +27,14 @@
       "framesChecked": 25,
       "durationSeconds": 1.0,
       "minXYZ": [
-        -0.3242,
-        0.0105,
-        -0.5291
+        -0.3079,
+        0.0129,
+        -0.5266
       ],
       "maxXYZ": [
-        0.3242,
-        1.7649,
-        0.5701
+        0.3079,
+        1.7382,
+        0.5676
       ],
       "loopSeamMaxComponentDifference": 0.0
     },
@@ -44,14 +44,14 @@
       "framesChecked": 25,
       "durationSeconds": 1.0,
       "minXYZ": [
-        -0.324,
-        -0.0018,
-        -0.5641
+        -0.3073,
+        0.0007,
+        -0.5555
       ],
       "maxXYZ": [
-        0.324,
-        1.4514,
-        0.1726
+        0.3073,
+        1.4248,
+        0.1471
       ],
       "loopSeamMaxComponentDifference": 0.0
     },
@@ -61,14 +61,14 @@
       "framesChecked": 49,
       "durationSeconds": 2.0,
       "minXYZ": [
-        -0.861,
-        0.0075,
-        -0.181
+        -0.8534,
+        0.01,
+        -0.1645
       ],
       "maxXYZ": [
-        0.324,
-        1.8058,
-        0.1599
+        0.3073,
+        1.799,
+        0.1337
       ],
       "loopSeamMaxComponentDifference": 0
     },
@@ -78,14 +78,14 @@
       "framesChecked": 49,
       "durationSeconds": 2.0,
       "minXYZ": [
-        -0.8649,
-        -0.0018,
-        -0.5641
+        -0.8458,
+        0.0007,
+        -0.5555
       ],
       "maxXYZ": [
-        0.324,
-        1.5219,
-        0.1599
+        0.3073,
+        1.5026,
+        0.1337
       ],
       "loopSeamMaxComponentDifference": 0
     },
@@ -95,14 +95,14 @@
       "framesChecked": 49,
       "durationSeconds": 2.0,
       "minXYZ": [
-        -0.324,
-        -0.0018,
-        -0.5621
+        -0.3073,
+        0.0007,
+        -0.5548
       ],
       "maxXYZ": [
-        0.324,
-        1.4514,
-        0.1726
+        0.3073,
+        1.4248,
+        0.1471
       ],
       "loopSeamMaxComponentDifference": 0.0
     },
@@ -112,14 +112,14 @@
       "framesChecked": 145,
       "durationSeconds": 6.0,
       "minXYZ": [
-        -0.324,
-        -0.001,
-        -0.5621
+        -0.3073,
+        0.0015,
+        -0.5548
       ],
       "maxXYZ": [
-        0.324,
-        1.4617,
-        0.1517
+        0.3073,
+        1.4268,
+        0.1277
       ],
       "loopSeamMaxComponentDifference": 0.0
     },
@@ -129,14 +129,14 @@
       "framesChecked": 145,
       "durationSeconds": 6.0,
       "minXYZ": [
-        -0.324,
-        -0.001,
-        -0.5639
+        -0.3073,
+        0.0015,
+        -0.5582
       ],
       "maxXYZ": [
-        0.324,
-        1.4536,
-        0.1544
+        0.3073,
+        1.4267,
+        0.1296
       ],
       "loopSeamMaxComponentDifference": 0.0
     },
@@ -146,14 +146,14 @@
       "framesChecked": 121,
       "durationSeconds": 5.0,
       "minXYZ": [
-        -0.324,
-        -0.001,
-        -0.5578
+        -0.3073,
+        0.0015,
+        -0.5499
       ],
       "maxXYZ": [
-        0.324,
-        1.4536,
-        0.1495
+        0.3073,
+        1.4267,
+        0.1258
       ],
       "loopSeamMaxComponentDifference": 0
     },
@@ -163,14 +163,14 @@
       "framesChecked": 145,
       "durationSeconds": 6.0,
       "minXYZ": [
-        -0.3527,
-        -0.001,
-        -0.5621
+        -0.3458,
+        0.0015,
+        -0.5548
       ],
       "maxXYZ": [
-        0.324,
-        1.4535,
-        0.1562
+        0.3073,
+        1.4266,
+        0.1312
       ],
       "loopSeamMaxComponentDifference": 0
     },
@@ -180,14 +180,14 @@
       "framesChecked": 97,
       "durationSeconds": 4.0,
       "minXYZ": [
-        -0.324,
-        0.0002,
-        -0.554
+        -0.3073,
+        0.0027,
+        -0.5467
       ],
       "maxXYZ": [
-        0.324,
-        1.4524,
-        0.1501
+        0.3073,
+        1.4255,
+        0.1263
       ],
       "loopSeamMaxComponentDifference": 0
     }

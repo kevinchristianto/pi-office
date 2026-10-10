@@ -4,7 +4,7 @@ A full-window, local 3D office for your Pi coding agents. Each participating ses
 
 **View-only MVP. Native Windows runtime. No cloud account, telemetry, external fonts or remote assets.** The initial view is live and empty until you connect a session. Demo mode is explicitly labeled sample data and never mixed with live data.
 
-Existing installation? See [UPDATING.md](UPDATING.md) to preserve your token and extension path while applying the 0.3.0 living-cubicle update.
+Existing installation? See [UPDATING.md](UPDATING.md) to preserve your token and extension path while applying the 0.4.0 resident and navigation update.
 
 ## Windows quick start
 
@@ -55,8 +55,9 @@ Before starting the bridge, run `$env:PI_OFFICE_PORT = '4318'`, then `npm start`
 - Click a character, or choose one from the small Agents button, to open its context controls.
 - Inspect opens its actual task/state/tool/model/usage/activity. Wave and Take a walk are visual interactions only. They never send Pi a prompt or change an agent's real work.
 - A stroll follows a desk-to-lounge route and returns automatically. The back-arrow returns early. Walkers queue per room to avoid opposing traffic in the aisle.
-- Follow tracks the selected resident. Dragging the camera, pressing Escape, or Reset camera cancels following.
-- Drag to orbit, scroll to zoom, right-drag or WASD/arrow keys to pan. Fullscreen is optional.
+- Focus frames a selected resident once; Follow tracks them until you take control. Dragging, scrolling, keyboard navigation, Escape, or Reset camera cancels tracking.
+- Drag to orbit, scroll to zoom, right-drag to pan. Focus the office canvas to use WASD/arrow keys; the help button lists keyboard and touch controls. Camera movement stays within the office. Fullscreen is optional.
+- Eight original adult resident models have distinct facial structure, hair, skin tones, stature and outfits. Appearance is assigned from agent ID, so selecting, reordering, switching rooms or changing task/state never rerolls it. These are visual identities, unrelated to roles or real people.
 - The styled project selector focuses a session or shows the first four sections. Each section shows up to six desks for performance. Every retained agent remains accessible in the roster; selecting an overflow agent brings its desk into view.
 - Work types; thinking, waiting, idle, error, completion and offline states have distinct restrained poses. Completion reacts once and settles. These reflect reported state, not an inferred task result.
 - OS reduced-motion preference freezes ambient/state gestures. Requested moves change location without an animated traverse, and camera following moves without easing.
@@ -69,7 +70,7 @@ Before starting the bridge, run `$env:PI_OFFICE_PORT = '4318'`, then `npm start`
 Keep the observer in its extracted app folder. In your Pi user settings (`%USERPROFILE%\.pi\agent\settings.json`, unless your agent directory is customized), append the absolute path to `extension/pi-office.ts` to the existing `extensions` array, preserving other entries. Use forward slashes in JSON, for example:
 
 ```json
-{"extensions": ["C:/Users/you/pi-office/extension/pi-office.ts"]}
+{ "extensions": ["C:/Users/you/pi-office/extension/pi-office.ts"] }
 ```
 
 Start the bridge first, then run `/reload` in each open interactive Pi session **when its response, compaction and subagent work are idle**. Future ordinary Pi launches load the observer automatically. This uses the default bridge port and the local token beside the app; no new environment variables are required. Pi versions started with extensions disabled may not discover it. Moving the observer alone to a different directory changes its relative token lookup, so keep the original path.
@@ -97,7 +98,7 @@ Pi session + explicit observer extension
 - `bridge/server.mjs`: Node built-ins only; binds IPv4 loopback, authenticates ingestion and serves the production bundle.
 - `bridge/state.mjs`: bounded normalized snapshots, retention and stale/offline projection.
 - `src/`: React 19 + React Three Fiber / Three.js, perspective room world, collision-safe visual routes and camera following.
-- `public/models/`: eight original local GLB assets, embedded materials and eleven complete articulated character animation clips.
+- `public/models/`: original local furniture GLBs and eight resident variants, embedded materials and eleven complete articulated character animation clips.
 - `assets-source/`: original Blender generation/export scripts and compressed editable `.blend` scenes.
 - `asset-renders/`: inspected Blender previews, clearly distinct from browser screenshots.
 - `test/backend*.test.mjs`: protocol, state, origin/auth/static serving, SSE and actual observer lifecycle/RPC contract tests.
@@ -157,6 +158,8 @@ Built as a view-only Pi observer with visual character interactions. Actual agen
 
 ## Asset previews
 
-![Current cubicle geometry rendered in Blender, not a browser screenshot](asset-renders/blender-cubicle-layout.png)
+![Final resident office scene rendered in Blender, not a browser screenshot](asset-renders/blender-office-residents.png)
 
-The editable source and export scripts are included. See `assets-source/README.md` and `public/models/asset-manifest.json` for dimensions, animation names and authorship. The cubicle preview uses exported runtime desk/partition coordinates. Lighting is Blender-rendered and the browser HUD/bubbles are not present; it is not a browser screenshot.
+![Eight authored adult resident variants rendered in Blender](asset-renders/blender-resident-lineup.png)
+
+The editable source and export scripts are included. See `assets-source/README.md`, `assets-source/resident-variants.json` and `public/models/asset-manifest.json` for dimensions, animation names and authorship. The office review uses the runtime cubicle coordinates and final GLBs, with six seated residents and two additional staged lounge residents to show all eight variants. Browser HUD, activity bubbles and camera controls are not shown: these are Blender asset renders, not application screenshots.

@@ -1,0 +1,418 @@
+{
+  "version": 1,
+  "authorship": "Original procedural anatomy, clothing, hair and accessories authored for Pi Office. No scans, photographs, external models or textures.",
+  "license": "CC0-1.0",
+  "runtimeSchema": "/models/agent-01.glb through /models/agent-08.glb; agent.glb aliases variant 01. Stable ID hashing should choose the URL. Preserve authored palettes.",
+  "root": "AgentRoot",
+  "units": "metres",
+  "up": "+Y",
+  "forward": "-Z",
+  "standingPelvisY": 0.84,
+  "seatedPelvisY": 0.55,
+  "deskChairOffsetZ": 0.74,
+  "jointNames": [
+    "Body",
+    "Head",
+    "UpperArm.L",
+    "LowerArm.L",
+    "Hand.L",
+    "UpperLeg.L",
+    "LowerLeg.L",
+    "Foot.L",
+    "UpperArm.R",
+    "LowerArm.R",
+    "Hand.R",
+    "UpperLeg.R",
+    "LowerLeg.R",
+    "Foot.R"
+  ],
+  "handContract": {
+    "version": 2,
+    "coordinateSpace": "glTF joint-local, metres",
+    "rigLabelNote": "Legacy rig.L is +X and anatomically right; rig.R is -X and anatomically left, for forward -Z/up +Y. Names remain stable.",
+    "rest": "Palms rearward, dorsal surfaces forward, thumbs medial.",
+    "typing": "Palms down, dorsal surfaces up, thumbs toward keyboard midline.",
+    "wave": "Only rig.R Hand rotation rolls during Wave and WaveSeated to present the palm outward.",
+    "animationChanges": [
+      "Wave:Hand.R:rotation",
+      "WaveSeated:Hand.R:rotation"
+    ],
+    "unchanged": "Every other animation input/output float payload is preserved."
+  },
+  "clipDurationsSeconds": {
+    "Idle": 2,
+    "Walk": 1,
+    "Work": 1,
+    "Wave": 2,
+    "WaveSeated": 2,
+    "IdleSeated": 2,
+    "ThinkSeated": 6,
+    "WaitSeated": 6,
+    "ErrorSeated": 5,
+    "DoneSeated": 6,
+    "OfflineSeated": 4
+  },
+  "variants": [
+    {
+      "id": "01",
+      "file": "agent-01.glb",
+      "label": "Cropped curls / oxford shirt",
+      "standingHeightMetres": 1.7052,
+      "neckOffsetMetres": 0.02,
+      "headProportionScale": 1.01,
+      "torsoWidthScale": 1.05,
+      "bounds": {
+        "minXYZ": [
+          -0.3073,
+          0.01,
+          -0.1645
+        ],
+        "maxXYZ": [
+          0.3073,
+          1.7152,
+          0.1337
+        ]
+      },
+      "meshCount": 14,
+      "drawPrimitives": 35,
+      "triangles": 53021,
+      "bytes": 1574560,
+      "clips": 11,
+      "materials": [
+        "Agent_Skin",
+        "Agent_Metal",
+        "Agent_Shirt",
+        "Agent_ShirtRib",
+        "Agent_Seam",
+        "Agent_SkinShade",
+        "Agent_Iris",
+        "Agent_Pupil",
+        "Agent_EyeWhite",
+        "Agent_Hair",
+        "Agent_HairLight",
+        "Agent_Lips",
+        "Agent_Inner",
+        "Agent_Frames",
+        "Agent_Shoes",
+        "Agent_Sole",
+        "Agent_Trousers"
+      ]
+    },
+    {
+      "id": "02",
+      "file": "agent-02.glb",
+      "label": "Blunt bob / terracotta knit",
+      "standingHeightMetres": 1.6397,
+      "neckOffsetMetres": -0.01,
+      "headProportionScale": 0.98,
+      "torsoWidthScale": 0.89,
+      "bounds": {
+        "minXYZ": [
+          -0.3073,
+          0.01,
+          -0.1645
+        ],
+        "maxXYZ": [
+          0.3073,
+          1.6497,
+          0.1179
+        ]
+      },
+      "meshCount": 14,
+      "drawPrimitives": 34,
+      "triangles": 45837,
+      "bytes": 1351180,
+      "clips": 11,
+      "materials": [
+        "Agent_Skin",
+        "Agent_Shirt",
+        "Agent_ShirtRib",
+        "Agent_Seam",
+        "Agent_SkinShade",
+        "Agent_Iris",
+        "Agent_Pupil",
+        "Agent_EyeWhite",
+        "Agent_Hair",
+        "Agent_Lips",
+        "Agent_HairLight",
+        "Agent_Inner",
+        "Agent_Metal",
+        "Agent_Frames",
+        "Agent_Shoes",
+        "Agent_Sole",
+        "Agent_Trousers"
+      ]
+    },
+    {
+      "id": "03",
+      "file": "agent-03.glb",
+      "label": "Silver side part / charcoal cardigan",
+      "standingHeightMetres": 1.708,
+      "neckOffsetMetres": 0.04,
+      "headProportionScale": 1.04,
+      "torsoWidthScale": 1.13,
+      "bounds": {
+        "minXYZ": [
+          -0.3073,
+          0.01,
+          -0.1645
+        ],
+        "maxXYZ": [
+          0.3073,
+          1.718,
+          0.1179
+        ]
+      },
+      "meshCount": 14,
+      "drawPrimitives": 36,
+      "triangles": 46498,
+      "bytes": 1371192,
+      "clips": 11,
+      "materials": [
+        "Agent_Skin",
+        "Agent_Metal",
+        "Agent_Shirt",
+        "Agent_Undershirt",
+        "Agent_ShirtRib",
+        "Agent_SkinShade",
+        "Agent_Iris",
+        "Agent_Pupil",
+        "Agent_EyeWhite",
+        "Agent_Hair",
+        "Agent_Lips",
+        "Agent_Frames",
+        "Agent_HairLight",
+        "Agent_Inner",
+        "Agent_Seam",
+        "Agent_Shoes",
+        "Agent_Sole",
+        "Agent_Trousers"
+      ]
+    },
+    {
+      "id": "04",
+      "file": "agent-04.glb",
+      "label": "Coiled natural hair / plum blouse",
+      "standingHeightMetres": 1.7117,
+      "neckOffsetMetres": 0.01,
+      "headProportionScale": 1.0,
+      "torsoWidthScale": 1.02,
+      "bounds": {
+        "minXYZ": [
+          -0.3073,
+          0.01,
+          -0.1645
+        ],
+        "maxXYZ": [
+          0.3073,
+          1.7217,
+          0.148
+        ]
+      },
+      "meshCount": 14,
+      "drawPrimitives": 35,
+      "triangles": 59449,
+      "bytes": 1764884,
+      "clips": 11,
+      "materials": [
+        "Agent_Skin",
+        "Agent_Metal",
+        "Agent_Shirt",
+        "Agent_ShirtRib",
+        "Agent_SkinShade",
+        "Agent_Iris",
+        "Agent_Pupil",
+        "Agent_EyeWhite",
+        "Agent_HairLight",
+        "Agent_Hair",
+        "Agent_Lips",
+        "Agent_Inner",
+        "Agent_Frames",
+        "Agent_Seam",
+        "Agent_Shoes",
+        "Agent_Sole",
+        "Agent_Trousers"
+      ]
+    },
+    {
+      "id": "05",
+      "file": "agent-05.glb",
+      "label": "Dark swept hair / sage overshirt",
+      "standingHeightMetres": 1.6893,
+      "neckOffsetMetres": 0.025,
+      "headProportionScale": 1.025,
+      "torsoWidthScale": 0.96,
+      "bounds": {
+        "minXYZ": [
+          -0.3073,
+          0.01,
+          -0.1645
+        ],
+        "maxXYZ": [
+          0.3073,
+          1.6993,
+          0.1179
+        ]
+      },
+      "meshCount": 14,
+      "drawPrimitives": 35,
+      "triangles": 46445,
+      "bytes": 1367944,
+      "clips": 11,
+      "materials": [
+        "Agent_Skin",
+        "Agent_Metal",
+        "Agent_Shirt",
+        "Agent_ShirtRib",
+        "Agent_Seam",
+        "Agent_SkinShade",
+        "Agent_Iris",
+        "Agent_Pupil",
+        "Agent_EyeWhite",
+        "Agent_Hair",
+        "Agent_Lips",
+        "Agent_HairLight",
+        "Agent_Inner",
+        "Agent_Frames",
+        "Agent_Shoes",
+        "Agent_Sole",
+        "Agent_Trousers"
+      ]
+    },
+    {
+      "id": "06",
+      "file": "agent-06.glb",
+      "label": "Low auburn bun / navy blazer",
+      "standingHeightMetres": 1.6412,
+      "neckOffsetMetres": -0.01,
+      "headProportionScale": 0.985,
+      "torsoWidthScale": 0.92,
+      "bounds": {
+        "minXYZ": [
+          -0.3073,
+          0.01,
+          -0.1645
+        ],
+        "maxXYZ": [
+          0.3073,
+          1.6512,
+          0.1515
+        ]
+      },
+      "meshCount": 14,
+      "drawPrimitives": 37,
+      "triangles": 48465,
+      "bytes": 1423416,
+      "clips": 11,
+      "materials": [
+        "Agent_Skin",
+        "Agent_Metal",
+        "Agent_Shirt",
+        "Agent_Undershirt",
+        "Agent_ShirtRib",
+        "Agent_Seam",
+        "Agent_SkinShade",
+        "Agent_Iris",
+        "Agent_Pupil",
+        "Agent_EyeWhite",
+        "Agent_Hair",
+        "Agent_Lips",
+        "Agent_HairLight",
+        "Agent_Inner",
+        "Agent_Frames",
+        "Agent_Shoes",
+        "Agent_Sole",
+        "Agent_Trousers"
+      ]
+    },
+    {
+      "id": "07",
+      "file": "agent-07.glb",
+      "label": "Close-shaved hair / ochre polo",
+      "standingHeightMetres": 1.6745,
+      "neckOffsetMetres": 0.035,
+      "headProportionScale": 1.02,
+      "torsoWidthScale": 1.17,
+      "bounds": {
+        "minXYZ": [
+          -0.3073,
+          0.01,
+          -0.1645
+        ],
+        "maxXYZ": [
+          0.3073,
+          1.6845,
+          0.1178
+        ]
+      },
+      "meshCount": 14,
+      "drawPrimitives": 34,
+      "triangles": 42637,
+      "bytes": 1267700,
+      "clips": 11,
+      "materials": [
+        "Agent_Skin",
+        "Agent_Metal",
+        "Agent_Shirt",
+        "Agent_ShirtRib",
+        "Agent_SkinShade",
+        "Agent_Iris",
+        "Agent_Pupil",
+        "Agent_EyeWhite",
+        "Agent_Hair",
+        "Agent_Lips",
+        "Agent_Frames",
+        "Agent_Inner",
+        "Agent_Seam",
+        "Agent_Shoes",
+        "Agent_Sole",
+        "Agent_Trousers"
+      ]
+    },
+    {
+      "id": "08",
+      "file": "agent-08.glb",
+      "label": "Salt-and-pepper waves / oatmeal knit",
+      "standingHeightMetres": 1.6623,
+      "neckOffsetMetres": 0.005,
+      "headProportionScale": 1.005,
+      "torsoWidthScale": 1.06,
+      "bounds": {
+        "minXYZ": [
+          -0.3073,
+          0.01,
+          -0.1645
+        ],
+        "maxXYZ": [
+          0.3073,
+          1.6723,
+          0.1179
+        ]
+      },
+      "meshCount": 14,
+      "drawPrimitives": 34,
+      "triangles": 46061,
+      "bytes": 1357344,
+      "clips": 11,
+      "materials": [
+        "Agent_Skin",
+        "Agent_Shirt",
+        "Agent_ShirtRib",
+        "Agent_Seam",
+        "Agent_SkinShade",
+        "Agent_Iris",
+        "Agent_Pupil",
+        "Agent_EyeWhite",
+        "Agent_Hair",
+        "Agent_Lips",
+        "Agent_HairLight",
+        "Agent_Inner",
+        "Agent_Metal",
+        "Agent_Frames",
+        "Agent_Shoes",
+        "Agent_Sole",
+        "Agent_Trousers"
+      ]
+    }
+  ]
+}

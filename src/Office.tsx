@@ -1,8 +1,7 @@
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import {
   ContactShadows,
   Html,
-  OrbitControls,
   PerspectiveCamera,
   useGLTF,
 } from "@react-three/drei";
@@ -24,7 +23,13 @@ import { useReducedMotion } from "./useReducedMotion";
 import { stateColor } from "./state";
 import { mergeStaticModel } from "./models";
 import { createMotion, requestMotion, stepMotion } from "./motion";
-import { fitOfficeCamera } from "./camera";
+import type { CameraAction } from "./camera";
+import CameraRig from "./CameraRig";
+import {
+  residentModel,
+  RESIDENT_SEATED_Y,
+  RESIDENT_STANDING_Y,
+} from "./appearance";
 
 type Command = {
   id: string;
@@ -32,14 +37,6 @@ type Command = {
   serial: number;
 } | null;
 type Registry = React.MutableRefObject<Map<string, THREE.Vector3>>;
-const palettes = [
-  "#799a8a",
-  "#b88c65",
-  "#8d8ba7",
-  "#758fba",
-  "#b68378",
-  "#a7a16f",
-];
 function Solid({
   position,
   size,
@@ -101,7 +98,7 @@ export function Character({
   reservations: React.MutableRefObject<Map<string, string>>;
   index: number;
 }) {
-  const { scene, animations } = useGLTF("/models/agent.glb");
+  const { scene, animations } = useGLTF(residentModel(agent.id));
   const group = useRef<THREE.Group>(null);
   const rig = useMemo(() => {
     const model = clone(scene);
@@ -109,29 +106,12 @@ export function Character({
       if (n instanceof THREE.Mesh) {
         n.castShadow = true;
         n.receiveShadow = true;
-        n.material = Array.isArray(n.material)
-          ? n.material.map((m) => m.clone())
-          : n.material.clone();
+        // Authored variant materials are immutable and safely shared.
+        // Clone only the articulated hierarchy, never per-frame or on selection.
       }
     });
     return model;
   }, [scene]);
-  useEffect(() => {
-    rig.traverse((node) => {
-      if (!(node instanceof THREE.Mesh)) return;
-      const materials = Array.isArray(node.material)
-        ? node.material
-        : [node.material];
-      for (const material of materials)
-        if (
-          /shirt|sweater|jacket|cloth/i.test(material.name) &&
-          (material as THREE.MeshStandardMaterial).color
-        )
-          (material as THREE.MeshStandardMaterial).color.set(
-            palettes[index % palettes.length],
-          );
-    });
-  }, [rig, index]);
   const mixer = useMemo(() => new THREE.AnimationMixer(rig), [rig]);
   const actions = useMemo(
     () =>
@@ -240,7 +220,11 @@ export function Character({
     stepMotion(m, delta, total, roomId, agent.id, reservations.current);
     const walking = m.mode === "outbound" || m.mode === "returning";
     const point = sampleRoute(desk.route, m.distance);
-    group.current.position.set(point[0], 0.04, point[1]);
+    group.current.position.set(
+      point[0],
+      m.mode === "seated" ? RESIDENT_SEATED_Y : RESIDENT_STANDING_Y,
+      point[1],
+    );
     if (walking) {
       const ahead = sampleRoute(
         desk.route,
@@ -382,7 +366,8 @@ export function Character({
       <group
         onClick={(e) => {
           e.stopPropagation();
-          onSelect();
+          // OrbitControls also finishes with a click; dragging must not select.
+          if (e.delta <= 4) onSelect();
         }}
         onPointerOver={(e) => {
           e.stopPropagation();
@@ -584,17 +569,19 @@ function Room({
           <group key={agent.id}>
             <Asset name="desk" position={[desk.desk[0], 0.04, desk.desk[1]]} />
             <Asset name="chair" position={[desk.seat[0], 0.04, desk.seat[1]]} />
-            <Character
-              agent={agent}
-              desk={desk}
-              roomId={session.id}
-              selected={selected === agent.id}
-              onSelect={() => onSelect(agent.id)}
-              command={command}
-              positions={positions}
-              reservations={reservations}
-              index={i + layout.index * 3}
-            />
+            <Suspense fallback={null}>
+              <Character
+                agent={agent}
+                desk={desk}
+                roomId={session.id}
+                selected={selected === agent.id}
+                onSelect={() => onSelect(agent.id)}
+                command={command}
+                positions={positions}
+                reservations={reservations}
+                index={i + layout.index * 3}
+              />
+            </Suspense>
           </group>
         );
       })}
@@ -615,112 +602,8 @@ function Room({
     </group>
   );
 }
-function CameraRig({
-  count,
-  reset,
-  follow,
-  positions,
-  controls,
-  onStopFollow,
-}: {
-  count: number;
-  reset: number;
-  follow: string | null;
-  positions: Registry;
-  controls: React.MutableRefObject<any>;
-  onStopFollow: () => void;
-}) {
-  const { camera, size, gl } = useThree();
-  const reduced = useReducedMotion();
-  const keys = useRef(new Set<string>());
-  useEffect(() => {
-    const fit = fitOfficeCamera(size.width, size.height, count);
-    const target = new THREE.Vector3(...fit.target);
-    camera.position.set(...fit.position);
-
-    camera.lookAt(target);
-    if (controls.current) {
-      controls.current.maxDistance = Math.max(85, fit.distance * 1.3);
-      controls.current.target.copy(target);
-      controls.current.update();
-      controls.current.saveState();
-    }
-  }, [camera, count, reset, size.width, size.height, controls]);
-  useEffect(() => {
-    const keydown = (e: KeyboardEvent) => {
-      if (
-        (e.target as HTMLElement)?.closest(
-          'input,select,textarea,button,[role="dialog"],[role="listbox"]',
-        )
-      )
-        return;
-      if (
-        [
-          "w",
-          "a",
-          "s",
-          "d",
-          "ArrowUp",
-          "ArrowDown",
-          "ArrowLeft",
-          "ArrowRight",
-        ].includes(e.key)
-      ) {
-        keys.current.add(e.key.toLowerCase());
-        if (follow) onStopFollow();
-      }
-    };
-    const keyup = (e: KeyboardEvent) =>
-      keys.current.delete(e.key.toLowerCase());
-    const clear = () => keys.current.clear();
-    window.addEventListener("keydown", keydown);
-    window.addEventListener("keyup", keyup);
-    window.addEventListener("blur", clear);
-    return () => {
-      window.removeEventListener("keydown", keydown);
-      window.removeEventListener("keyup", keyup);
-      window.removeEventListener("blur", clear);
-    };
-  }, [follow, onStopFollow]);
-  useFrame((_, delta) => {
-    const c = controls.current;
-    if (!c) return;
-    if (follow) {
-      const position = positions.current.get(follow);
-      if (position) {
-        const target = position.clone().add(new THREE.Vector3(0, 0.85, 0));
-        const desired = target.clone().add(new THREE.Vector3(4.3, 3.4, 5.6));
-        const t = reduced ? 1 : 1 - Math.exp(-delta * 3);
-        camera.position.lerp(desired, t);
-        c.target.lerp(target, t);
-        c.update();
-      }
-      return;
-    }
-    if (keys.current.size) {
-      const forward = new THREE.Vector3();
-      camera.getWorldDirection(forward);
-      forward.y = 0;
-      forward.normalize();
-      const right = forward.clone().cross(new THREE.Vector3(0, 1, 0));
-      const movement = new THREE.Vector3();
-      if (keys.current.has("w") || keys.current.has("arrowup"))
-        movement.add(forward);
-      if (keys.current.has("s") || keys.current.has("arrowdown"))
-        movement.sub(forward);
-      if (keys.current.has("d") || keys.current.has("arrowright"))
-        movement.add(right);
-      if (keys.current.has("a") || keys.current.has("arrowleft"))
-        movement.sub(right);
-      movement.normalize().multiplyScalar(delta * 6);
-      camera.position.add(movement);
-      c.target.add(movement);
-      c.update();
-    }
-  });
-  return null;
-}
 export default function Office({
+  cameraAction,
   sessions,
   selected,
   onSelect,
@@ -729,6 +612,7 @@ export default function Office({
   command,
   onStopFollow,
 }: {
+  cameraAction?: CameraAction | null;
   sessions: Session[];
   selected: string | null;
   onSelect: (id: string) => void;
@@ -737,7 +621,6 @@ export default function Office({
   command: Command;
   onStopFollow: () => void;
 }) {
-  const controls = useRef<any>(null);
   const positions = useRef(new Map<string, THREE.Vector3>());
   const reservations = useRef(new Map<string, string>());
   const rooms = sessions.length
@@ -813,27 +696,12 @@ export default function Office({
           blur={2}
         />
       </Suspense>
-      <OrbitControls
-        ref={controls}
-        makeDefault
-        minDistance={4}
-        maxDistance={85}
-        minPolarAngle={0.22}
-        maxPolarAngle={Math.PI / 2.13}
-        enableDamping
-        dampingFactor={0.09}
-        zoomSpeed={0.8}
-        panSpeed={0.85}
-        onStart={() => {
-          if (follow) onStopFollow();
-        }}
-      />
       <CameraRig
         count={rooms.length}
         reset={reset}
         follow={follow}
         positions={positions}
-        controls={controls}
+        cameraAction={cameraAction}
         onStopFollow={onStopFollow}
       />
     </Canvas>

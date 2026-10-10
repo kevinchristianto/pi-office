@@ -8,12 +8,24 @@ import {
 } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { createRoot, extend, _roots } from "@react-three/fiber";
 import { createRoomLayout } from "../src/world";
+import {
+  residentModel,
+  residentVariant,
+  RESIDENT_SEATED_Y,
+  RESIDENT_STANDING_Y,
+} from "../src/appearance";
 
-const asset = vi.hoisted(() => ({ current: null as GLTF | null }));
+const asset = vi.hoisted(() => ({
+  current: null as GLTF | null,
+  paths: [] as string[],
+}));
 // Keep the actual GLTF, React reconciler, useFrame and AnimationMixer. Only
 // replace browser asset delivery and DOM labels; rendering pixels needs WebGL.
 vi.mock("@react-three/drei", () => ({
-  useGLTF: () => asset.current,
+  useGLTF: (path: string) => {
+    asset.paths.push(path);
+    return asset.current;
+  },
   ContactShadows: () => null,
   Html: () => null,
   OrbitControls: () => null,
@@ -56,6 +68,20 @@ function pose() {
   body().traverse((node) => values.push(...node.position, ...node.quaternion));
   return values;
 }
+function palette() {
+  const colors: string[] = [];
+  body().traverse((node) => {
+    if (!(node instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(node.material)
+      ? node.material
+      : [node.material];
+    for (const material of materials) {
+      if (material instanceof THREE.MeshStandardMaterial)
+        colors.push(`${material.name}:${material.color.getHexString()}`);
+    }
+  });
+  return colors;
+}
 async function expectMoving() {
   await tick(30);
   const before = pose();
@@ -80,7 +106,8 @@ beforeEach(async () => {
     removeEventListener: (_: string, listener: () => void) =>
       listeners.delete(listener),
   }));
-  const bytes = fs.readFileSync("public/models/agent.glb");
+  asset.paths = [];
+  const bytes = fs.readFileSync(`public${residentModel("agent1")}`);
   loaded = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, "");
   asset.current = loaded;
   extend(THREE);
@@ -122,6 +149,8 @@ describe("real character animation runtime", () => {
   it("keeps playing through focus, return to all rooms, and repeated reindexing", async () => {
     await expectMoving();
     const original = body();
+    const originalPalette = palette();
+    expect(originalPalette.length).toBeGreaterThan(0);
     for (const index of [0, 3, 0, 3, 1, 0]) {
       props = {
         ...props,
@@ -130,6 +159,10 @@ describe("real character animation runtime", () => {
       };
       await render();
       expect(body().uuid).toBe(original.uuid);
+      expect(palette()).toEqual(originalPalette);
+      expect(new Set(asset.paths)).toEqual(
+        new Set([residentModel(props.agent.id)]),
+      );
       await expectMoving();
       expect(body().position.y).toBeLessThan(0.56);
     }
@@ -187,4 +220,94 @@ describe("real character animation runtime", () => {
     await tick(21);
     expect(pose()).toEqual(offline);
   });
+
+  it("keeps its rig and model through repeated live field updates", async () => {
+    const original = body();
+    for (const state of ["thinking", "working", "waiting", "working"]) {
+      props = {
+        ...props,
+        agent: {
+          ...props.agent,
+          state,
+          name: "A newly reported display name",
+          task: `Live ${state} update`,
+          model: "updated-model",
+          inputTokens: 4000,
+        },
+      };
+      await render();
+      expect(body().uuid).toBe(original.uuid);
+      expect(new Set(asset.paths)).toEqual(
+        new Set([residentModel(props.agent.id)]),
+      );
+      await expectMoving();
+    }
+  });
+
+  it("evaluates wave, standing and walking commands without changing the reported task", async () => {
+    const reported = { ...props.agent };
+    props = {
+      ...props,
+      command: { id: props.agent.id, type: "wave", serial: 1 },
+    };
+    await render();
+    await expectMoving();
+    expect(body().position.y).toBeLessThan(0.65);
+    expect(props.positions.current.get(props.agent.id)!.y).toBe(
+      RESIDENT_SEATED_Y,
+    );
+    props = {
+      ...props,
+      command: { id: props.agent.id, type: "walk", serial: 2 },
+    };
+    await render();
+    await expectMoving();
+    expect(body().position.y).toBeGreaterThan(0.75);
+    expect(props.positions.current.get(props.agent.id)).toBeDefined();
+    expect(props.positions.current.get(props.agent.id)!.y).toBe(
+      RESIDENT_STANDING_Y,
+    );
+    props = {
+      ...props,
+      command: { id: props.agent.id, type: "return", serial: 3 },
+    };
+    await render();
+    await tick(180);
+    expect(body().position.y).toBeLessThan(0.65);
+    expect(props.positions.current.get(props.agent.id)!.y).toBe(
+      RESIDENT_SEATED_Y,
+    );
+    expect(props.agent).toEqual(reported);
+  });
+
+  for (let variant = 0; variant < 8; variant++) {
+    it(`plays resident variant ${variant + 1} after rig replacement and reduced-motion interruption`, async () => {
+      const id = Array.from({ length: 256 }, (_, i) => `resident-${i}`).find(
+        (id) => residentVariant(id) === variant,
+      )!;
+      const bytes = fs.readFileSync(`public${residentModel(id)}`);
+      asset.current = await new GLTFLoader().parseAsync(
+        Uint8Array.from(bytes).buffer,
+        "",
+      );
+      props = { ...props, agent: { ...props.agent, id } };
+      await render();
+      expect(asset.paths.at(-1)).toBe(residentModel(id));
+      await expectMoving();
+      await act(async () => {
+        reduced = true;
+        listeners.forEach((f) => f());
+      });
+      await tick(30);
+      const frozen = pose();
+      await tick(21);
+      expect(pose()).toEqual(frozen);
+      await act(async () => {
+        reduced = false;
+        listeners.forEach((f) => f());
+      });
+      await expectMoving();
+      expect(pose().every(Number.isFinite)).toBe(true);
+    });
+  }
 });

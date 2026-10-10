@@ -1268,3 +1268,102 @@ dd {
     animation: none !important;
   }
 }
+
+/* The world receives shortcuts only when explicitly focused. HUD text stays selectable. */
+.world-layer canvas {
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: none;
+}
+.world-layer canvas:focus-visible {
+  outline: 2px solid #e7dcb4;
+  outline-offset: -5px;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.view-controls > button {
+  min-width: 40px;
+  height: 40px;
+}
+.fit-label {
+  font-size: 10px;
+  font-weight: 500;
+}
+.view-controls .follow-chip {
+  position: absolute;
+  bottom: 49px;
+  right: 0;
+  white-space: nowrap;
+  max-width: min(280px, 85vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.context-actions {
+  flex-wrap: wrap;
+}
+.context-actions > button {
+  min-height: 35px;
+}
+.guide-panel .guide-camera-note {
+  font-size: 10px;
+  line-height: 1.65;
+}
+@media (max-width: 1200px) {
+  .navigation-hint {
+    display: none;
+  }
+}
+@media (max-width: 640px) {
+  .view-controls {
+    gap: 4px;
+    bottom: 15px;
+  }
+  .view-controls > button {
+    min-width: 37px;
+    height: 40px;
+    padding: 0 8px;
+  }
+  .view-controls .fit-label {
+    display: none;
+  }
+  .mode-dock button {
+    min-height: 32px;
+  }
+  .context-actions > button {
+    min-height: 36px;
+    padding: 8px 7px;
+  }
+}
+@media (max-width: 370px) {
+  .view-controls {
+    right: 10px;
+    gap: 3px;
+  }
+  .view-controls > button {
+    min-width: 33px;
+    padding: 0 6px;
+  }
+  .mode-dock {
+    left: 10px;
+  }
+  .mode-dock button {
+    padding: 8px 6px;
+    font-size: 8px;
+  }
+}
+@media (pointer: coarse) {
+  .view-controls > button {
+    min-height: 44px;
+  }
+  .context-actions > button {
+    min-height: 42px;
+  }
+}
