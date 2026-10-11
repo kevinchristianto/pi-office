@@ -7,6 +7,5 @@ export default defineConfig({
     include: ["test/*.test.tsx"],
     pool: "forks",
     maxWorkers: 1,
-    minWorkers: 1,
   },
 });

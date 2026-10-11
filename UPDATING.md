@@ -11,9 +11,13 @@
 
 There is no token rotation or automatic Pi settings migration. Never use `git clean -fdx` to upgrade: it can remove ignored local credentials and dependencies. Do not replace your complete Pi settings file with a sample from documentation.
 
-## Project grouping update
+## Animation stability update (0.5.1)
 
-This release changes the observer. Reload it in each idle Pi session after updating, as described above. Sessions in the same Git worktree now share one office; separate worktrees/clones remain distinct. Outside Git, the exact canonical working directory defines the project. Older observers have only working-directory fallback grouping, so reload is needed for nested directories and filesystem aliases. Unknown paths remain isolated. This display change does not combine or control underlying Pi sessions.
+Rebuild the browser bundle, restart the bridge and hard-refresh the office tab using steps 1–4. The pre-release audit also hardened the observer against overlapping starts, delayed RPCs and ambiguous child identities. Reload the observer in every participating Pi session when work is idle using step 5, even when upgrading from 0.5.0. Older/unversioned bridge snapshots remain viewable without repeated rig resets, but cannot safely animate lifecycle events.
+
+## Project grouping update (0.5.0)
+
+The 0.5.0 release changed the observer. Reload it in each idle Pi session after updating, as described above. Sessions in the same Git worktree now share one office; separate worktrees/clones remain distinct. Outside Git, the exact canonical working directory defines the project. Older observers have only working-directory fallback grouping, so reload is needed for nested directories and filesystem aliases. Unknown paths remain isolated. This display change does not combine or control underlying Pi sessions.
 
 ## Configuration and launcher behavior
 

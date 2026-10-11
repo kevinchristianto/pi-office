@@ -683,6 +683,8 @@ dd {
 .guide-panel {
   width: 470px;
   max-width: 100%;
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
   background: #294133;
   border: 1px solid #d9e5b93b;
   border-radius: 20px;
@@ -1001,10 +1003,6 @@ dd {
   }
   .guide-panel li {
     padding-bottom: 8px;
-  }
-  .guide-panel {
-    max-height: calc(100dvh - 30px);
-    overflow: auto;
   }
 }
 @media (prefers-reduced-motion: reduce) {

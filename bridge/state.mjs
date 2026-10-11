@@ -25,6 +25,14 @@ const text = (v, max = 240) =>
   typeof v === "string"
     ? v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").slice(0, max)
     : "";
+// Identity is not display text: lossy cleanup can merge unrelated sources.
+const identifier = (value) =>
+  typeof value === "string" &&
+  value.length <= 240 &&
+  value.trim().length > 0 &&
+  !/[\u0000-\u001f\u007f]/.test(value)
+    ? value
+    : null;
 const number = (v) =>
   typeof v === "number" && Number.isFinite(v) && v >= 0
     ? Math.min(v, Number.MAX_SAFE_INTEGER)
@@ -141,8 +149,11 @@ export function createStateStore({
       throw new Error("Unsupported observer protocol");
     if (!isRecord(payload.session)) throw new Error("session is required");
     const src = payload.session;
-    const id = text(src.id, 240);
-    if (!id.trim()) throw new Error("session.id is required");
+    const id = identifier(src.id);
+    if (id === null)
+      throw new Error(
+        "session.id must be a nonblank, control-free string of at most 240 characters",
+      );
     if (src.agents !== undefined && !Array.isArray(src.agents))
       throw new Error("session.agents must be an array");
     const stamp = new Date(now()).toISOString();
@@ -193,8 +204,8 @@ export function createStateStore({
     }
     for (const raw of (src.agents || []).slice(0, LIMITS.agents)) {
       if (!isRecord(raw)) continue;
-      const agentId = text(raw.id, 240);
-      if (!agentId.trim()) continue;
+      const agentId = identifier(raw.id);
+      if (agentId === null) continue;
       let agent = session.agents.get(agentId);
       if (!agent) {
         if (session.agents.size >= LIMITS.agents) {

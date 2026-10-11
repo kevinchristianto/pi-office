@@ -185,6 +185,20 @@ const numeric = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
 const str = (v: unknown, max = 240) =>
   typeof v === "string" ? v.replace(/[\u0000-\u001f]/g, " ").slice(0, max) : "";
+// Display strings may be shortened; identity components must never be rewritten
+// or prefix-truncated, since that merges unrelated sessions or children.
+const identity = (v: unknown, max = 4096): string | null =>
+  typeof v === "string" &&
+  v.trim().length > 0 &&
+  v.length <= max &&
+  !/[\u0000-\u001f\u007f]/.test(v)
+    ? v
+    : null;
+const identityComponent = (value: string) =>
+  value.replace(
+    /[/%:]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
 const timestamp = () => new Date().toISOString();
 const modelName = (v: unknown): string | null =>
   typeof v === "string"
@@ -238,6 +252,14 @@ const safeTask = (v: unknown) =>
 export default function piOffice(pi: Pi) {
   let session: Data | null = null;
   const agents = new Map<string, Agent>();
+  // Keep replay watermarks after display-row eviction. Saturation deliberately
+  // suppresses only new child animations until the next session/reload.
+  const childLifecycle = new Map<
+    string,
+    { marker: LifecycleMarker; at: number }
+  >();
+  let childObservedAt = new WeakMap<Agent, number>();
+  let retiredAgents = new WeakSet<Agent>();
   const activeTools = new Map<string, string>();
   let interval: ReturnType<typeof setInterval> | undefined;
   let sendTimer: ReturnType<typeof setTimeout> | undefined;
@@ -250,9 +272,13 @@ export default function piOffice(pi: Pi) {
   let negotiated = false;
   let nextAttempt = 0;
   let generation = 0;
+  let lifecycleRequest = 0;
+  let shutdownPromise: Promise<void> | null = null;
   let warned = false;
   let rpcBusy = false;
   let rpcReady = false;
+  let rpcEpoch = 0;
+  let costPending = false;
   let subCapabilities: Data = {};
   let capabilities = {
     pi: true,
@@ -275,16 +301,20 @@ export default function piOffice(pi: Pi) {
     agent.logs.push({ time: timestamp(), level, message: str(message, 300) });
     agent.logs = agent.logs.slice(-24);
   }
+  function agentId(key: string) {
+    return `${session!.id}:${key === "main" ? "main" : createHash("sha256").update(key).digest("hex").slice(0, 24)}`;
+  }
   function agent(key: string, patch: Data = {}) {
     if (!session) return undefined;
-    const id = `${session.id}:${key === "main" ? "main" : createHash("sha256").update(key).digest("hex").slice(0, 24)}`;
+    const id = agentId(key);
     let row = agents.get(id);
     if (!row) {
       if (agents.size >= 48) {
         const candidate = [...agents.values()].find(
           (a) =>
-            a.role !== "orchestrator" &&
-            ["completed", "error", "stale"].includes(a.state),
+            a.id !== agentId("main") &&
+            (["completed", "error", "stale"].includes(a.state) ||
+              retiredAgents.has(a)),
         );
         if (candidate) agents.delete(candidate.id);
         else return undefined;
@@ -302,7 +332,7 @@ export default function piOffice(pi: Pi) {
         cost: null,
         updatedAt: timestamp(),
         logs: [],
-        lifecycle: null,
+        lifecycle: childLifecycle.get(id)?.marker || null,
       };
       agents.set(id, row);
     }
@@ -327,6 +357,12 @@ export default function piOffice(pi: Pi) {
         (at === previousAt && kind === "start"))
     )
       return;
+    if (
+      source === "pi-subagents:child-status" &&
+      !childLifecycle.has(row.id) &&
+      childLifecycle.size >= 512
+    )
+      return;
     row.lifecycle = {
       version: 1,
       eventId: randomUUID(),
@@ -334,6 +370,8 @@ export default function piOffice(pi: Pi) {
       source,
       at: new Date(at).toISOString(),
     };
+    if (source === "pi-subagents:child-status")
+      childLifecycle.set(row.id, { marker: row.lifecycle, at });
   }
   function changeMain(patch: Data, message?: string, level?: string) {
     const row = agent("main", patch);
@@ -361,12 +399,17 @@ export default function piOffice(pi: Pi) {
       );
     sendTimer?.unref?.();
   }
-  async function post(route: string, payload: Data) {
-    const response = await fetch(`${endpoint}${route}`, {
+  async function post(
+    route: string,
+    payload: Data,
+    target: string,
+    credential: string,
+  ) {
+    const response = await fetch(`${target}${route}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${credential}`,
       },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(1500),
@@ -376,39 +419,50 @@ export default function piOffice(pi: Pi) {
     return response.json();
   }
   async function flush() {
-    if (sending) {
-      await sending;
-      if (!dirty) return;
-    }
+    while (sending) await sending;
     if (!session || !token || !endpoint || !dirty) return;
     if (Date.now() < nextAttempt) {
       schedule();
       return;
     }
     const current = generation;
+    const target = endpoint,
+      credential = token;
     const payload = {
       version: 1,
-      session: { ...session, agents: [...agents.values()] },
+      session: {
+        ...session,
+        agents: [...agents.values()].map((row) => ({
+          ...row,
+          logs: [...row.logs],
+        })),
+      },
       capabilities: { ...capabilities },
     };
     dirty = false;
     sending = (async () => {
       try {
         if (!negotiated) {
-          const hello = await post("/api/hello", {
-            version: 1,
-            client: "pi-office-observer",
-          });
+          const hello = await post(
+            "/api/hello",
+            {
+              version: 1,
+              client: "pi-office-observer",
+            },
+            target,
+            credential,
+          );
           if (hello.version !== 1 || hello.capabilities?.readOnly !== true)
             throw new Error("Incompatible bridge");
-          negotiated = true;
+          if (generation === current) negotiated = true;
         }
-        await post("/api/ingest", payload);
-        nextAttempt = 0;
+        await post("/api/ingest", payload, target, credential);
+        if (generation === current) nextAttempt = 0;
       } catch {
+        if (generation !== current) return;
         negotiated = false;
         nextAttempt = Date.now() + 5000;
-        if (generation === current) dirty = true;
+        dirty = true;
         warn(
           "Pi Office is not connected. Start its local bridge and check PI_OFFICE_TOKEN_FILE. Pi keeps working normally.",
         );
@@ -424,47 +478,67 @@ export default function piOffice(pi: Pi) {
   function listen(name: string, callback: (data: Data) => void) {
     if (!pi.events) return;
     const current = generation;
-    const off = pi.events.on(name, (value) => {
-      if (!stopped && generation === current && record(value)) {
-        try {
-          callback(value);
-        } catch {
-          /* A malformed optional observation cannot affect Pi. */
+    try {
+      const off = pi.events.on(name, (value) => {
+        if (!stopped && generation === current && record(value)) {
+          try {
+            callback(value);
+          } catch {
+            /* A malformed optional observation cannot affect Pi. */
+          }
         }
-      }
-    });
-    if (typeof off === "function") busCleanup.add(off);
+      });
+      if (typeof off === "function") busCleanup.add(off);
+    } catch {
+      /* Optional bus support must not disable root observation. */
+    }
   }
   function rpc(method: "ping" | "status" | "cost"): Promise<Data | null> {
     if (!pi.events || stopped) return Promise.resolve(null);
+    const bus = pi.events;
+    const current = generation;
     return new Promise((resolve) => {
       const requestId = randomUUID();
       let complete = false;
       let off: (() => void) | void;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = () => {
+        try {
+          if (typeof off === "function") off();
+        } catch {}
+      };
       const finish = (data: Data | null) => {
         if (complete) return;
         complete = true;
         clearTimeout(timer);
-        if (typeof off === "function") off();
+        cleanup();
         pendingRpc.delete(cancel);
         resolve(data);
       };
       const cancel = () => finish(null);
-      const timer = setTimeout(cancel, 1200);
+      timer = setTimeout(cancel, 1200);
       timer.unref?.();
       pendingRpc.add(cancel);
-      off = pi.events!.on(`subagents:rpc:v1:reply:${requestId}`, (reply) =>
-        finish(
-          record(reply) &&
-            reply.version === 1 &&
-            reply.success === true &&
-            record(reply.data)
-            ? reply.data
-            : null,
-        ),
-      );
       try {
-        pi.events!.emit("subagents:rpc:v1:request", {
+        off = bus.on(`subagents:rpc:v1:reply:${requestId}`, (reply) =>
+          finish(
+            !stopped &&
+              generation === current &&
+              record(reply) &&
+              (reply.requestId === undefined ||
+                reply.requestId === requestId) &&
+              reply.version === 1 &&
+              reply.success === true &&
+              record(reply.data)
+              ? reply.data
+              : null,
+          ),
+        );
+        if (complete) {
+          cleanup();
+          return;
+        }
+        bus.emit("subagents:rpc:v1:request", {
           version: 1,
           requestId,
           method,
@@ -512,8 +586,9 @@ export default function piOffice(pi: Pi) {
         : [];
     for (const [index, item] of rows.slice(0, 40).entries()) {
       if (!record(item)) continue;
-      const runId = str(item.runId || raw.runId || raw.id || parentId);
-      const key = `run:${runId}:${numeric(item.index) ?? numeric(item.stepIndex) ?? index}`;
+      const runId = identity(item.runId ?? raw.runId ?? raw.id ?? parentId);
+      if (!runId) continue;
+      const key = `run:${identityComponent(runId)}:${numeric(item.index) ?? numeric(item.stepIndex) ?? index}`;
       const row = agent(key, {
         name: str(item.agent || item.name) || "Subagent",
         role: str(item.role) || "subagent",
@@ -523,7 +598,9 @@ export default function piOffice(pi: Pi) {
             item.status ||
             (item.exitCode === 0 || item.success === true
               ? "completed"
-              : (numeric(item.exitCode) !== null && item.exitCode !== 0) ||
+              : (typeof item.exitCode === "number" &&
+                    Number.isInteger(item.exitCode) &&
+                    item.exitCode !== 0) ||
                   item.success === false
                 ? "error"
                 : terminal
@@ -565,7 +642,9 @@ export default function piOffice(pi: Pi) {
         typeof node.id !== "string"
       )
         return;
-      const key = `${parentPath}/${str(node.id, 160)}`;
+      const nodeId = identity(node.id);
+      if (!nodeId) return;
+      const key = `${parentPath}/${identityComponent(nodeId)}`;
       const children = Array.isArray(node.children)
         ? node.children.filter(record)
         : [];
@@ -598,8 +677,10 @@ export default function piOffice(pi: Pi) {
     ) {
       const current = new Set<string>();
       for (const entry of data.fleet.entries.slice(0, 40)) {
-        if (!record(entry) || typeof entry.key !== "string") continue;
-        const key = `fleet:${str(entry.key, 180)}`;
+        if (!record(entry)) continue;
+        const entryKey = identity(entry.key);
+        if (!entryKey) continue;
+        const key = `fleet:${entryKey}`;
         const row = agent(key, {
           name: str(entry.agent || entry.label) || "Subagent",
           role: str(entry.role) || "subagent",
@@ -616,7 +697,9 @@ export default function piOffice(pi: Pi) {
         }
       }
       // An absent display entry is not proof of successful completion.
-      if (!data.fleet.omitted)
+      const complete =
+        data.fleet.omitted === 0 && data.fleet.entries.length <= 40;
+      if (complete)
         for (const old of knownFleet)
           if (!current.has(old)) {
             const row = agents.get(old);
@@ -630,7 +713,9 @@ export default function piOffice(pi: Pi) {
               );
             }
           }
-      knownFleet = current;
+      knownFleet = complete
+        ? current
+        : new Set([...knownFleet, ...current].filter((id) => agents.has(id)));
     } else {
       if (record(data.details)) observeRows(data.details, "status");
       observeAsyncSnapshot(data.asyncSnapshot);
@@ -638,36 +723,71 @@ export default function piOffice(pi: Pi) {
     schedule();
   }
   async function refresh(withCost = false) {
-    if (rpcBusy || stopped || !pi.events) return;
+    if (stopped || !pi.events) return;
+    if (withCost) costPending = true;
+    if (rpcBusy) return;
     rpcBusy = true;
     const current = generation;
+    const epoch = rpcEpoch;
+    const active = () =>
+      !stopped && generation === current && rpcEpoch === epoch;
     try {
       if (!rpcReady) {
         const ping = await rpc("ping");
-        if (!ping || generation !== current) return;
+        if (!ping || !active()) return;
         rpcReady = true;
         subCapabilities = record(ping.capabilities) ? ping.capabilities : {};
         capabilities.subagents = true;
         capabilities.fleet = subCapabilities.fleetStatus?.version === 1;
-        capabilities.childStatus = Boolean(
-          ping.events?.childStatus || subCapabilities.events?.childStatus,
-        );
+        capabilities.childStatus =
+          (ping.events?.childStatus ?? subCapabilities.events?.childStatus) ===
+          "subagent:child-status";
       }
       const status = await rpc("status");
-      if (status && generation === current) applyStatus(status);
-      // The package explicitly says cost is a turn-boundary read, never a timer poll.
-      if (withCost && subCapabilities.cost?.version === 1) {
-        const report = await rpc("cost");
-        if (report && generation === current && record(report.parent) && root())
-          usage(root()!, report.parent);
+      if (!active()) return;
+      if (status) applyStatus(status);
+      // Retain one coalesced turn-boundary read while another request is active.
+      // Timers never create cost work; a failed read waits for the next boundary.
+      if (costPending) {
+        costPending = false;
+        if (subCapabilities.cost?.version === 1) {
+          const report = await rpc("cost");
+          if (active() && report && record(report.parent) && root()) {
+            usage(root()!, report.parent);
+            schedule();
+          }
+        }
       }
-      lastRpc = Date.now();
+      if (active()) lastRpc = Date.now();
+    } catch {
+      /* Optional RPC failures never escape into Pi. */
     } finally {
-      rpcBusy = false;
+      if (generation === current) {
+        rpcBusy = false;
+        if (!stopped && (rpcEpoch !== epoch || (costPending && rpcReady)))
+          void refresh();
+      }
     }
   }
   function lifecycle(event: Data, kind: string) {
     if (event.sessionId && session && event.sessionId !== session.id) return;
+    if (kind === "child") {
+      const at =
+        typeof event.ts === "number" || typeof event.ts === "string"
+          ? new Date(event.ts).getTime()
+          : NaN;
+      if (
+        event.type !== "subagent.child-status" ||
+        event.version !== 1 ||
+        !identity(event.runId) ||
+        !identity(event.childId) ||
+        !["started", "stopping", "stopped"].includes(event.status) ||
+        !Number.isFinite(at) ||
+        at < observingSince ||
+        at > Date.now()
+      )
+        return;
+    } else if (event.childId !== undefined && !identity(event.childId)) return;
     const main = root();
     if (main && kind === "complete")
       addLog(
@@ -676,13 +796,44 @@ export default function piOffice(pi: Pi) {
         event.success === false ? "error" : "info",
       );
     if (!capabilities.fleet) {
-      const runId = str(event.runId || event.id);
-      const child = str(event.childId || event.stepIndex || "root");
+      const runId = identity(event.runId ?? event.id);
+      const child =
+        identity(event.childId) ??
+        (numeric(event.stepIndex) !== null ? String(event.stepIndex) : "root");
       if (runId) {
-        const row = agent(`run:${runId}:${child}`, {
-          name: str(event.agent || event.label) || "Subagent",
+        const key = `run:${identityComponent(runId)}:${identityComponent(child)}`;
+        const at =
+          typeof event.ts === "number" || typeof event.ts === "string"
+            ? new Date(event.ts).getTime()
+            : NaN;
+        const existing = agents.get(agentId(key));
+        const history = childLifecycle.get(agentId(key));
+        const previous = existing?.lifecycle || history?.marker;
+        // Duplicate starts/stopping hints can advance observation time without
+        // replacing an animation marker. Keep their ordering watermark too.
+        const lastAt = Math.max(
+          existing ? (childObservedAt.get(existing) ?? -Infinity) : -Infinity,
+          history?.at ?? -Infinity,
+          previous ? Date.parse(previous.at) : -Infinity,
+        );
+        // An exact hint may be replayed after a stop. Ignore the observation,
+        // not just its animation marker, so old state cannot revive the row.
+        if (
+          kind === "child" &&
+          Number.isFinite(lastAt) &&
+          (at < lastAt ||
+            (at === lastAt &&
+              (previous?.kind === "stop" || event.status === "started")))
+        )
+          return;
+        const name = event.agent ?? event.label;
+        const task = event.task ?? event.goal ?? event.label;
+        const row = agent(key, {
+          ...(typeof name === "string"
+            ? { name: str(name) || "Subagent" }
+            : {}),
           role: "subagent",
-          task: safeTask(event.task || event.goal || event.label),
+          ...(typeof task === "string" ? { task: safeTask(task) } : {}),
           state:
             kind === "complete"
               ? event.success === false
@@ -692,9 +843,15 @@ export default function piOffice(pi: Pi) {
                       (event.success === true ? "completed" : "stale"),
                   )
               : stateName(event.status || "running"),
-          model: modelName(event.model),
+          ...(event.model !== undefined
+            ? { model: modelName(event.model) }
+            : {}),
           tool: null,
         });
+        if (row && kind === "child") {
+          if (event.status === "stopped") retiredAgents.add(row);
+          else if (event.status === "started") retiredAgents.delete(row);
+        }
         if (
           row &&
           kind === "child" &&
@@ -707,10 +864,6 @@ export default function piOffice(pi: Pi) {
           event.childId.length > 0 &&
           ["started", "stopped"].includes(event.status)
         ) {
-          const at =
-            typeof event.ts === "number" || typeof event.ts === "string"
-              ? new Date(event.ts).getTime()
-              : NaN;
           // Child hints can be replayed. Never animate restored history, malformed
           // timestamps, future events, or older/duplicate transitions for this ID.
           if (Number.isFinite(at) && at >= observingSince && at <= Date.now())
@@ -720,6 +873,11 @@ export default function piOffice(pi: Pi) {
               "pi-subagents:child-status",
               at,
             );
+        }
+        if (row && kind === "child") {
+          childObservedAt.set(row, at);
+          const saved = childLifecycle.get(row.id);
+          if (saved) saved.at = at;
         }
         if (row)
           addLog(
@@ -735,9 +893,11 @@ export default function piOffice(pi: Pi) {
     schedule();
     void refresh(kind === "complete");
   }
-  async function shutdown() {
-    if (stopped) return;
+  function shutdown(): Promise<void> {
+    if (shutdownPromise) return shutdownPromise;
+    if (stopped) return Promise.resolve();
     stopped = true;
+    generation++;
     if (interval) clearInterval(interval);
     interval = undefined;
     if (sendTimer) clearTimeout(sendTimer);
@@ -759,15 +919,27 @@ export default function piOffice(pi: Pi) {
       }
       dirty = true;
       nextAttempt = 0;
-      await flush();
     }
+    shutdownPromise = flush().finally(() => {
+      shutdownPromise = null;
+    });
+    return shutdownPromise;
   }
   // Registering observers has no side effects on model behavior. Resources start only at session_start.
   function on(name: string, handler: Handler) {
     try {
       pi.on(name, (event, ctx) => {
         try {
-          const result = handler(event, ctx);
+          if (
+            name !== "session_start" &&
+            name !== "session_shutdown" &&
+            (stopped || !session)
+          )
+            return;
+          const result = handler(
+            record(event) ? event : {},
+            record(ctx) ? ctx : {},
+          );
           if (result && typeof result.then === "function")
             return result.catch(() => undefined);
         } catch {}
@@ -777,19 +949,31 @@ export default function piOffice(pi: Pi) {
     }
   }
   on("session_start", async (event, ctx) => {
+    const request = ++lifecycleRequest;
     await shutdown();
+    if (request !== lifecycleRequest) return;
     generation++;
     const startGeneration = generation;
     stopped = false;
     observingSince = Date.now();
     context = ctx;
+    session = null;
+    dirty = false;
+    endpoint = "";
+    token = "";
     agents.clear();
+    childLifecycle.clear();
+    childObservedAt = new WeakMap<Agent, number>();
+    retiredAgents = new WeakSet<Agent>();
     seenMessages = new WeakSet<object>();
     activeTools.clear();
     knownFleet.clear();
     negotiated = false;
     rpcReady = false;
     rpcBusy = false;
+    rpcEpoch++;
+    costPending = false;
+    lastRpc = 0;
     subCapabilities = {};
     warned = false;
     nextAttempt = 0;
@@ -814,19 +998,33 @@ export default function piOffice(pi: Pi) {
       )
         throw new Error("Loopback URL required");
       url.hostname = "127.0.0.1";
-      endpoint = url.origin;
+      const target = url.origin;
       const tokenFile =
         process.env.PI_OFFICE_TOKEN_FILE ||
         path.resolve(
           path.dirname(fileURLToPath(import.meta.url)),
           "../.pi-office-token",
         );
-      token =
+      const credential =
         process.env.PI_OFFICE_TOKEN ||
         (await fs.readFile(tokenFile, "utf8")).trim();
-      if (!/^[A-Za-z0-9_.~+\/-]{32,512}$/.test(token))
+      if (
+        stopped ||
+        startGeneration !== generation ||
+        request !== lifecycleRequest
+      )
+        return;
+      if (!/^[A-Za-z0-9_.~+\/-]{32,512}$/.test(credential))
         throw new Error("Invalid observer credential");
+      endpoint = target;
+      token = credential;
     } catch {
+      if (
+        stopped ||
+        startGeneration !== generation ||
+        request !== lifecycleRequest
+      )
+        return;
       endpoint = "";
       token = "";
       warn(
@@ -836,12 +1034,18 @@ export default function piOffice(pi: Pi) {
     }
     let id: string;
     try {
-      id = str(ctx.sessionManager?.getSessionId?.(), 160) || randomUUID();
+      // Reserve 25 characters for the colon + hashed child suffix (bridge max 240).
+      id = identity(ctx.sessionManager?.getSessionId?.(), 215) || randomUUID();
     } catch {
       id = randomUUID();
     }
     const project = await resolveProjectMetadata(ctx.cwd);
-    if (stopped || startGeneration !== generation) return;
+    if (
+      stopped ||
+      startGeneration !== generation ||
+      request !== lifecycleRequest
+    )
+      return;
     session = {
       id,
       name:
@@ -873,6 +1077,7 @@ export default function piOffice(pi: Pi) {
           observeMessage(entry.message, true);
     } catch {}
     listen("subagents:rpc:v1:ready", () => {
+      rpcEpoch++;
       rpcReady = false;
       void refresh();
     });
@@ -890,6 +1095,7 @@ export default function piOffice(pi: Pi) {
     void refresh();
   });
   on("session_shutdown", (event) => {
+    lifecycleRequest++;
     // Preserve shutdown behavior; record only an explicit quit, never inferred
     // disconnects, session replacement, reload, or the internal cleanup call.
     const main = root();
@@ -920,7 +1126,7 @@ export default function piOffice(pi: Pi) {
     );
   });
   on("tool_execution_update", (e) => {
-    if (record(e.partialResult?.details))
+    if (e.toolName === "subagent" && record(e.partialResult?.details))
       observeRows(e.partialResult.details, str(e.toolCallId));
   });
   on("tool_execution_end", (e) => {
@@ -934,9 +1140,9 @@ export default function piOffice(pi: Pi) {
       `Tool ${e.isError ? "failed" : "finished"}: ${str(e.toolName)}.`,
       e.isError ? "error" : "info",
     );
-    if (record(e.result?.details))
+    if (e.toolName === "subagent" && record(e.result?.details))
       observeRows(e.result.details, str(e.toolCallId), true);
-    if (str(e.toolName).includes("subagent")) void refresh(true);
+    if (e.toolName === "subagent") void refresh(true);
   });
   on("message_end", (e) => observeMessage(e.message));
   on("model_select", (e) => {

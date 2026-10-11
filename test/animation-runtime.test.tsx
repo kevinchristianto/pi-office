@@ -693,3 +693,55 @@ describe("real character animation runtime", () => {
     originals.forEach((dispose) => expect(dispose).not.toHaveBeenCalled());
   });
 });
+
+it("cancels a stop/restart before the first travel frame without hiding or moving a seated resident", async () => {
+  const complete = vi.fn();
+  const trip = lifecycleProps("exiting", "rapid-stop");
+  props = { ...props, desk: trip.desk, onLifecycleComplete: complete };
+  await render();
+  await tick(1);
+  const original = resident();
+  const seated = original.position.clone();
+  props = { ...props, ...trip };
+  await render();
+  props = {
+    ...props,
+    transition: {
+      ...trip.transition,
+      direction: "arriving",
+      token: "rapid-restart",
+    },
+  };
+  await render();
+  expect(resident()).toBe(original);
+  expect(resident().visible).toBe(true);
+  expect(resident().position.distanceTo(seated)).toBeLessThan(1e-9);
+  await tick(1);
+  expect(resident().position.distanceTo(seated)).toBeLessThan(1e-9);
+  expect(complete).toHaveBeenCalledExactlyOnceWith("rapid-restart", "arriving");
+  expect(props.reservations.current.size).toBe(0);
+});
+
+it("cancels an unrendered arrival offsite when a stop arrives before the first travel frame", async () => {
+  const complete = vi.fn();
+  props = {
+    ...props,
+    ...lifecycleProps("arriving", "rapid-start"),
+    onLifecycleComplete: complete,
+  };
+  await render();
+  expect(resident().visible).toBe(false);
+  props = {
+    ...props,
+    transition: {
+      ...props.transition!,
+      direction: "exiting",
+      token: "rapid-stop",
+    },
+  };
+  await render();
+  await tick(1);
+  expect(resident().visible).toBe(false);
+  expect(complete).toHaveBeenCalledExactlyOnceWith("rapid-stop", "exiting");
+  expect(props.reservations.current.size).toBe(0);
+});

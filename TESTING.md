@@ -1,3 +1,47 @@
+# Verification record · audited animation stability 0.5.1
+
+Date: 2026-10-11. Audited the uncommitted fix stage based on published commit `a549e0c935cee5e6b4eafa5f33569006b9f1dde4`. Cloud Linux only; no access to the user's computer. See [AUDIT.md](AUDIT.md) for the complete scope, confirmed corrections and residual risks.
+
+## Final automated verification
+
+- Fresh `npm run check`: strict frontend TypeScript/Vite production build, strict observer TypeScript, **119 Node tests plus 366 Vitest tests across 33 files, 485 total**, all passing with no skipped tests. After the final observer sparse-metadata clarification, strict observer TypeScript and the entire 119-test Node suite were rerun successfully; frontend source was unchanged.
+- Clean `npm ci --ignore-scripts` from the updated lockfile passed. Vitest is pinned to 4.1.11; production dependency versions are unchanged. `npm ls --depth=0` passes. Final full dependency advisory scan reports **zero known vulnerabilities**. Advisory results are time-dependent and are not a security guarantee.
+- Configuration TypeScript, Prettier, `git diff --check`, all 18 asset Python scripts' AST parsing, JavaScript exporter syntax and configuration/generated JSON parsing pass.
+- All 16 shipped GLBs remain byte-identical to the published baseline. Actual GLTFLoader, AnimationMixer, animation/anatomy, resource disposal, architecture/routing and furniture geometry regressions pass.
+- Independent reviews cross-checked frontend/runtime and bridge/observer fixes. Negative controls reproduced defects against the prior frozen source, including 26 observer audit failures and four preservation passes.
+
+The 71 additional tests since the initial 414-test stability stage cover event ordering/replay, observer races and privacy, bridge boundaries, interactions and actual 3D lifecycle/hidden-actor behavior. Runtime tests exercise real R3F reconciliation, GLBs, clip mixers, DOM portals and raycasting with renderer output stubbed; they do not verify browser pixels or GPU frame rate.
+
+## Explicitly unverified or historical
+
+Six Playwright definitions were discovered, not executed. The separate supported cloud browser cannot reach the executor loopback; denied browser routes were not bypassed. Native Windows/CMD/ACL behavior, installed Pi/pi-subagents integration and real browser WebGL/input/performance remain unverified.
+
+Existing 0.5.0 Blender footage is historical and was not rerendered for these fixes. The review exporter safely refuses the changed animation-blending contract until its mapping is refreshed. Assets and clips remain unchanged. This audited release includes observer changes, so follow UPDATING.md and reload participating observers only when Pi and child work are idle.
+
+The older records below describe earlier source stages, including their dependency-install and verification limitations. They do not replace this fresh audit run.
+
+---
+
+# Historical pre-audit verification · animation stability 0.5.1
+
+Date: 2026-10-11. Fresh clone of published commit `a549e0c935cee5e6b4eafa5f33569006b9f1dde4`. Cloud Linux only; no access to the user's computer.
+
+## Current bugfix verification
+
+All steps of `npm run check` passed on the final source (build/observer/Node and Vitest were run separately): strict frontend TypeScript and Vite build, strict observer TypeScript, **81 Node tests plus 333 Vitest tests across 28 files, 414 total**. `git diff --check` passed. The 25 new regressions include actual scene identity, interrupted animation blending, pre-frame transforms and real App focus/lifecycle continuity.
+
+The regression tests reproduce the published-source failures using the actual App/data/lifecycle path and actual React Three Fiber reconciliation, shipped GLBs and AnimationMixer. Renderer output is stubbed: these are runtime-logic and transform checks, not browser screenshots, GPU/frame-rate measurements or a reproduction on the user's Windows computer.
+
+Confirmed causes include repeated visual baseline resets on unversioned bridge snapshots; global scene keys and project-ID changes replacing surviving rigs; selected historical roster movement swallowing a stop; interrupted animation fades restarting outgoing weights; and a stop/restart direction change reapplying the initial position before the next rendered frame. Ordinary current-versioned metadata snapshots alone preserve rig identity.
+
+The 0.5.0 Blender footage remains a prior visual review. It is unchanged and does not demonstrate these live data-update fixes. All authored assets and animation clips remain unchanged.
+
+Dependency installation from the registry failed on this run. Verification uses the intact existing dependency tree with the same dependency lockfile; `npm ls --depth=0` passes. Only the package version metadata changes to 0.5.1. Browser WebGL and native Windows/Pi integration remain unverified.
+
+The older release records below are historical context, not a substitute for the current bugfix run.
+
+---
+
 # Verification record · project-grouped corporate office 0.5.0
 
 Date: 2026-10-11. Reconstructed from the published 0.4.0 baseline after a cloud workspace rollback. Earlier 0.5.0 test totals are not evidence for this tree. All current results below come from fresh runs. Cloud Linux only; no access to the user’s computer.

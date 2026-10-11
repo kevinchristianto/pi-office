@@ -79,6 +79,7 @@ export default function App() {
   const [facility, setFacility] = useState<WorkplaceFacility | null>(null);
   const [guide, setGuide] = useState(false);
   const guideOpener = useRef<HTMLElement | null>(null);
+  const guidePanel = useRef<HTMLElement | null>(null);
   const openGuide = () => {
     guideOpener.current = document.activeElement as HTMLElement | null;
     setGuide(true);
@@ -89,6 +90,7 @@ export default function App() {
   const [reset, setReset] = useState(0);
   const [follow, setFollow] = useState<string | null>(null);
   const [cameraAction, setCameraAction] = useState<CameraAction | null>(null);
+  const commandSerial = useRef(0);
   const [command, setCommand] = useState<{
     id: string;
     type: "wave" | "walk" | "return";
@@ -98,15 +100,34 @@ export default function App() {
     () => (mode === "demo" ? demo.sessions : projectOffices(snapshot.sessions)),
     [mode, snapshot.sessions],
   );
+  const previousSessions = useRef(sessions);
   const agents = sessions.flatMap((s) => s.agents);
   const agent = agents.find((a) => a.id === selected);
   const currentSession = sessions.find((s) =>
     s.agents.some((a) => a.id === selected),
   );
+  // A legacy cwd room can acquire a canonical project ID after observer reload.
+  // Resolve that view by its raw source sessions before rendering: an interim
+  // empty room list would unmount the same selected/followed resident.
+  const previousFocus = previousSessions.current.find(
+    (session) => session.id === focusSession,
+  );
+  const focusedSources = new Set(
+    previousFocus?.sourceSessions?.map((session) => session.id) ?? [],
+  );
+  const replacementRooms = sessions.filter((session) =>
+    session.sourceSessions?.some((source) => focusedSources.has(source.id)),
+  );
+  const effectiveFocus =
+    focusSession === "all" ||
+    sessions.some((session) => session.id === focusSession)
+      ? focusSession
+      : (currentSession?.id ??
+        (replacementRooms.length === 1 ? replacementRooms[0].id : "all"));
   const visibleWindow =
-    focusSession === "all"
+    effectiveFocus === "all"
       ? sessions.slice(0, 4)
-      : sessions.filter((s) => s.id === focusSession);
+      : sessions.filter((s) => s.id === effectiveFocus);
   // Availability chooses which four projects receive scarce overview space.
   // It must not reshuffle the physical rooms when that membership is unchanged:
   // a last-root stop still needs its original room and departure route.
@@ -149,13 +170,9 @@ export default function App() {
       setFollow(null);
       setCameraAction(null);
     }
-    if (
-      focusSession !== "all" &&
-      !sessions.some((item) => item.id === focusSession)
-    ) {
-      setFocusSession("all");
-    }
-  }, [sessions, selected, focusSession]);
+    if (focusSession !== effectiveFocus) setFocusSession(effectiveFocus);
+    previousSessions.current = sessions;
+  }, [sessions, selected, focusSession, effectiveFocus]);
   useEffect(() => {
     const escape = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || facility) return;
@@ -174,11 +191,14 @@ export default function App() {
     const trap = (event: KeyboardEvent) => {
       if (event.key !== "Tab") return;
       const buttons = Array.from(
-        document.querySelectorAll<HTMLElement>('[role="dialog"] button'),
+        guidePanel.current?.querySelectorAll<HTMLElement>("button") ?? [],
       );
       const first = buttons[0],
         last = buttons.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
+      if (!guidePanel.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last?.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -186,14 +206,28 @@ export default function App() {
         first?.focus();
       }
     };
+    const containFocus = (event: FocusEvent) => {
+      if (
+        event.target instanceof Node &&
+        !guidePanel.current?.contains(event.target)
+      )
+        guidePanel.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    };
     document.addEventListener("keydown", trap);
+    document.addEventListener("focusin", containFocus);
     return () => {
       document.removeEventListener("keydown", trap);
-      previous?.focus();
+      document.removeEventListener("focusin", containFocus);
+      if (previous?.isConnected) previous.focus();
     };
   }, [guide]);
+  const issueCommand = (id: string, type: "wave" | "walk" | "return") => {
+    // Wall clocks can repeat or move backwards. Keep each explicit gesture
+    // unique even across data-mode changes and view-only resident remounts.
+    setCommand({ id, type, serial: ++commandSerial.current });
+  };
   const act = (type: "wave" | "walk" | "return") => {
-    if (selected) setCommand({ id: selected, type, serial: Date.now() });
+    if (selected) issueCommand(selected, type);
   };
   const resetView = () => {
     setFollow(null);
@@ -254,7 +288,7 @@ export default function App() {
         </div>
         <div className="header-spacer" />
         <RoomSelector
-          value={focusSession}
+          value={effectiveFocus}
           options={[
             {
               value: "all",
@@ -277,8 +311,12 @@ export default function App() {
         <button
           className={`hud-button ${roster ? "chosen" : ""}`}
           aria-label="Open agent roster"
+          aria-expanded={roster}
           title="Agents"
-          onClick={() => setRoster((v) => !v)}
+          onClick={() => {
+            setDetails(false);
+            setRoster((v) => !v);
+          }}
         >
           <Users size={17} />
           <span>{agents.length}</span>
@@ -323,7 +361,7 @@ export default function App() {
           }}
           onVisualCommand={(id, type) => {
             choose(id);
-            setCommand({ id, type, serial: Date.now() });
+            issueCommand(id, type);
           }}
         />
       )}
@@ -468,6 +506,7 @@ export default function App() {
           <div className="context-actions">
             <button
               onClick={() => {
+                setRoster(false);
                 setDetails((v) => !v);
                 setTab("overview");
               }}
@@ -735,6 +774,7 @@ export default function App() {
       {guide && (
         <div className="guide-backdrop" onClick={() => setGuide(false)}>
           <section
+            ref={guidePanel}
             className="guide-panel"
             role="dialog"
             aria-modal="true"

@@ -39,6 +39,8 @@ function roster(sessions: Session[], selected: string | null): ResidentEntry[] {
 }
 type State = {
   scope: string;
+  resetScope: string;
+  roomIds: string[];
   baseline: string;
   hidden: string[];
   signature: string;
@@ -64,33 +66,27 @@ export function useResidentLifecycle({
   connection: "connecting" | "connected" | "disconnected";
 }) {
   const current = roster(sessions, selected);
-  const overflowSelection = sessions.some(
-    (session) =>
-      session.agents.findIndex((agent) => agent.id === selected) >=
-      MAX_VISIBLE_DESKS,
-  )
-    ? selected
-    : "";
-  // Focus/project/reconnect changes establish a fresh static snapshot. They are
-  // navigation/data boundaries, never invented lifecycle events.
-  const scope = JSON.stringify([
-    epoch,
-    enabled,
-    reduced,
-    connection,
-    sessions.map((s) => s.id),
-    overflowSelection,
-  ]);
+  const roomIds = sessions.map((session) => session.id);
+  const resetScope = JSON.stringify([epoch, enabled, reduced, connection]);
+  // Transport and accessibility changes establish a baseline. View changes
+  // only rebase rooms whose physical slot changed, keeping unaffected walkers.
+  const scope = JSON.stringify([resetScope, roomIds]);
   // Retained departures may be outside the visible window and must still
   // receive fresh status/task/provenance updates on subsequent snapshots.
   const signature = JSON.stringify([
     sessions.map((session) => [session.id, session.agents]),
     events,
+    // Selection changes the six-desk window, not the lifetime of every actor.
+    // In particular, historical priority can move the unchanged selection
+    // past the cutoff on a stop snapshot; its marker must still be consumed.
+    selected,
   ]);
   const eventSignature = JSON.stringify(events.map((event) => event.eventId));
   const baseline = JSON.stringify([epoch, enabled, connection]);
   const fresh = (hidden: string[] = []): State => ({
     scope,
+    resetScope,
+    roomIds,
     baseline,
     eventSignature,
     hidden,
@@ -100,22 +96,49 @@ export function useResidentLifecycle({
   });
   const [stored, setStored] = useState<State>(() => fresh());
   let state = stored;
-  if (stored.scope !== scope) {
-    // A filter only changes the view, so a previously stopped resident remains
-    // absent. A fresh transport epoch is an ordinary authoritative baseline.
+  if (stored.resetScope !== resetScope) {
+    // Accessibility changes keep stopped residents absent. A fresh transport
+    // epoch is an ordinary authoritative baseline.
     state = fresh(stored.baseline === baseline ? stored.hidden : []);
     setStored(state);
-  } else if (stored.signature !== signature) {
+  } else if (stored.scope !== scope || stored.signature !== signature) {
+    // The centered grid changes when the room count or slot changes. Never
+    // carry an absolute walking path through relocated furniture. Unrelated
+    // room replacement at the same count leaves other slots uninterrupted.
+    const stableRooms = new Set(
+      roomIds.filter(
+        (id, index) =>
+          roomIds.length === stored.roomIds.length &&
+          stored.roomIds[index] === id,
+      ),
+    );
+    const observedRooms = new Map(
+      sessions.flatMap((session) =>
+        session.agents.map(
+          (agent) => [residentIdentity(session.id, agent), session.id] as const,
+        ),
+      ),
+    );
+    const previousEntries = stored.entries.filter(
+      (entry) =>
+        stableRooms.has(entry.roomId) &&
+        (!observedRooms.has(entry.key) ||
+          observedRooms.get(entry.key) === entry.roomId),
+    );
     const seen = new Set(stored.seen);
     const latest = new Map<string, AgentLifecycleEvent>();
+    const unrenderedStops = new Set<string>();
     if (
       enabled &&
       connection === "connected" &&
       eventSignature !== stored.eventSignature
     ) {
       for (const event of events) {
-        if (!seen.has(event.eventId))
-          latest.set(keyFor(event.sessionId, event.agentId), event);
+        if (!seen.has(event.eventId)) {
+          const key = keyFor(event.sessionId, event.agentId);
+          latest.set(key, event);
+          if (event.kind === "stop") unrenderedStops.add(key);
+        }
       }
     }
     const hidden = new Set(stored.hidden);
@@ -125,7 +148,9 @@ export function useResidentLifecycle({
         hidden.add(key);
       } else hidden.delete(key);
     }
-    const previous = new Map(stored.entries.map((entry) => [entry.key, entry]));
+    const previous = new Map(
+      previousEntries.map((entry) => [entry.key, entry]),
+    );
     // Display priority can move a stopped actor beyond the six-desk window.
     // Keep its newest observed fields throughout its retained departure, even
     // when the visible roster has already made room for a live replacement.
@@ -138,7 +163,7 @@ export function useResidentLifecycle({
     );
     const entries: ResidentEntry[] = [];
     const usedSlots = new Set(
-      stored.entries.flatMap((entry) =>
+      previousEntries.flatMap((entry) =>
         entry.transition ? [entry.transition.queueIndex] : [],
       ),
     );
@@ -158,7 +183,7 @@ export function useResidentLifecycle({
     };
     // Explicit stop wins over presentation state (a stopped child may report
     // idle). Its last actor/desk survives until the rendered walk completes.
-    for (const old of stored.entries) {
+    for (const old of previousEntries) {
       const event = latest.get(old.key);
       if (event?.kind === "stop") {
         const exit = !reduced && transition(old, event, "exiting");
@@ -209,7 +234,14 @@ export function useResidentLifecycle({
       if (hidden.has(item.key)) continue;
       const old = previous.get(item.key);
       let movement: ResidentTransition | undefined;
-      if (!reduced && event?.kind === "start")
+      if (
+        !reduced &&
+        event?.kind === "start" &&
+        stableRooms.has(item.roomId) &&
+        // Stop/restart frames can be batched into one React commit. An actor
+        // that never began that departure is already here; leave it in place.
+        !(unrenderedStops.has(item.key) && old && !old.transition)
+      )
         movement = transition(item, event, "arriving");
       else if (!reduced && old?.transition?.direction === "arriving")
         movement = old.transition;
@@ -250,6 +282,8 @@ export function useResidentLifecycle({
       : [];
     state = {
       scope,
+      resetScope,
+      roomIds,
       baseline,
       signature,
       eventSignature,

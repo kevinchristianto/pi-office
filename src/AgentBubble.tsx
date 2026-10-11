@@ -137,7 +137,11 @@ export default function AgentBubble({
               </div>
               <div>
                 <dt>Model</dt>
-                <dd>{agent.model?.trim() || "Not reported"}</dd>
+                <dd>
+                  {agent.model?.trim() ||
+                    agent.source?.model?.trim() ||
+                    "Not reported"}
+                </dd>
               </div>
               <div>
                 <dt>Observed</dt>

@@ -34,6 +34,7 @@ export function createLifecycleGate(now = Date.now) {
   let revision = -1;
   let connectedAt = 0;
   let ready = false;
+  let hasBaseline = false;
   let agents = new Set<string>();
   const seen = new Map<string, true>();
   const remember = (id: string) => {
@@ -42,6 +43,7 @@ export function createLifecycleGate(now = Date.now) {
   };
   function reset() {
     ready = false;
+    hasBaseline = false;
     streamId = undefined;
     revision = -1;
     agents = new Set();
@@ -56,6 +58,12 @@ export function createLifecycleGate(now = Date.now) {
       snapshot.revision! >= 0;
     const newBaseline =
       !ready || !validStream || snapshot.streamId !== streamId;
+    // Legacy snapshots cannot prove lifecycle continuity, so every one is a
+    // marker-ineligible baseline. That does not make every heartbeat a new
+    // transport: repeated visual resets would remount every resident and rig.
+    const resetVisuals =
+      !hasBaseline ||
+      (validStream ? !ready || snapshot.streamId !== streamId : ready);
     // Do not let a late HTTP read or reordered stream frame rewind the UI.
     if (!newBaseline && snapshot.revision! < revision)
       return {
@@ -86,13 +94,14 @@ export function createLifecycleGate(now = Date.now) {
       }
     }
     if (newBaseline) connectedAt = time;
+    hasBaseline = true;
     ready = validStream;
     streamId = snapshot.streamId;
     revision = snapshot.revision ?? -1;
     agents = current;
     return {
       accepted: true,
-      reset: newBaseline,
+      reset: resetVisuals,
       events: events.slice(-MAX_LIFECYCLE_EVENTS),
     };
   }

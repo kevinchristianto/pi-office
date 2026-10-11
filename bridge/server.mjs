@@ -180,6 +180,7 @@ export async function createBridge({
     const allowedHosts = new Set([
       `127.0.0.1:${listeningPort}`,
       `localhost:${listeningPort}`,
+      ...(listeningPort === 80 ? ["127.0.0.1", "localhost"] : []),
     ]);
     const remote = req.socket.remoteAddress;
     if (
@@ -187,17 +188,22 @@ export async function createBridge({
       !allowedHosts.has(host)
     )
       return respond(res, 403, { error: "Loopback Host required" });
-    if (req.headers.origin && req.headers.origin !== `http://${host}`)
+    const origin = new URL(`http://${host}`).origin;
+    if (
+      req.headers.origin &&
+      req.headers.origin !== origin &&
+      !(listeningPort === 80 && req.headers.origin === `${origin}:80`)
+    )
       return respond(res, 403, { error: "Same-origin requests only" });
     if (req.headers["sec-fetch-site"] === "cross-site")
       return respond(res, 403, { error: "Cross-site requests denied" });
     let url;
     try {
-      url = new URL(req.url, `http://${host}`);
+      url = new URL(req.url, origin);
     } catch {
       return respond(res, 400, { error: "Invalid URL" });
     }
-    if (url.origin !== `http://${host}`)
+    if (url.origin !== origin)
       return respond(res, 400, { error: "Invalid request target" });
     try {
       if (url.pathname === "/api/health" && req.method === "GET")
@@ -294,7 +300,14 @@ export async function createBridge({
       if (!within(file)) return respond(res, 404, { error: "Not found" });
       try {
         file = await fs.realpath(file);
-        if (!within(file)) return respond(res, 404, { error: "Not found" });
+        if (
+          !within(file) ||
+          path
+            .relative(distDir, file)
+            .split(path.sep)
+            .some((part) => part.startsWith("."))
+        )
+          return respond(res, 404, { error: "Not found" });
       } catch {
         return respond(res, 404, {
           error: "App not built or file not found. Run npm run build first.",

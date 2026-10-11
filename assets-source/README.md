@@ -59,7 +59,9 @@ Run from the project root, with npm dependencies installed, Blender 4.3.2 and ff
     blender -b --factory-startup --threads 9 --python assets-source/render_corporate_workplace.py -- walk-sample 8
     blender -b --factory-startup --threads 9 --python assets-source/render_corporate_workplace.py -- walk 8
 
-Validate the saved review without rerendering:
+The committed walking footage and its saved source-hash record belong to the 0.5.0 visual review. Later runtime fixes intentionally make a strict source-hash check fail until a new review is generated. The current exporter also guards the former `fadeIn`/`fadeOut` clip contract and refuses the 0.5.1 interruption-safe blend helper; its review mapping must be updated before producing a new animation review. This guard is not disabled during the code audit. Do not refresh provenance hashes merely to make a check pass: regenerate and inspect the review when geometry or motion changes. The existing footage is not evidence for later live-event or interruption fixes.
+
+For a review generated from the current source, validate the saved review without rerendering:
 
     blender -b assets-source/corporate-office-walking-review.blend --python-exit-code 1 --python assets-source/validate_corporate_walking.py -- --require-video
 

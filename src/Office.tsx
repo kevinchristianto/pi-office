@@ -5,11 +5,18 @@ import {
   PerspectiveCamera,
   useGLTF,
 } from "@react-three/drei";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import * as THREE from "three";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { Agent, AgentLifecycleEvent, Session } from "./types";
-import { projectRosterSummary } from "./projectProjection";
+import { projectRosterSummary, residentIdentity } from "./projectProjection";
 import {
   createOfficeLayout,
   buildingLayoutBounds,
@@ -41,6 +48,7 @@ import {
   type LifecycleDirection,
 } from "./lifecycleWalking";
 import { bubbleMode, presentation } from "./agentPresentation";
+import { createAnimationBlend } from "./animationBlend";
 import { useReducedMotion } from "./useReducedMotion";
 import {
   createRoomDecor,
@@ -72,6 +80,22 @@ type Command = {
   serial: number;
 } | null;
 type Registry = React.MutableRefObject<Map<string, THREE.Vector3>>;
+// Pointer ownership can transfer directly between residents. An older actor's
+// hide/unmount must not clear the cursor currently owned by another actor.
+let residentCursor: { owner: object; previous: string } | null = null;
+function claimResidentCursor(owner: object) {
+  residentCursor = {
+    owner,
+    previous: residentCursor?.previous ?? document.body.style.cursor,
+  };
+  document.body.style.cursor = "pointer";
+}
+function releaseResidentCursor(owner: object) {
+  if (residentCursor?.owner !== owner) return;
+  if (document.body.style.cursor === "pointer")
+    document.body.style.cursor = residentCursor.previous;
+  residentCursor = null;
+}
 function Solid({
   position,
   size,
@@ -272,6 +296,7 @@ export function Character({
   transition,
   lifecycleRoute,
   onLifecycleComplete,
+  motionScope,
 }: {
   agent: Agent;
   desk: DeskLayout;
@@ -284,6 +309,7 @@ export function Character({
   index: number;
   transition?: ResidentTransition;
   lifecycleRoute?: Route;
+  motionScope?: string;
   onLifecycleComplete?: (token: string, direction: LifecycleDirection) => void;
 }) {
   const { scene, animations } = useGLTF(
@@ -316,7 +342,7 @@ export function Character({
       ),
     [mixer, animations],
   );
-  const currentAction = useRef<THREE.AnimationAction | null>(null);
+  const blendPose = useMemo(() => createAnimationBlend(actions), [actions]);
   const joints = useMemo(
     () =>
       Object.fromEntries(
@@ -361,12 +387,31 @@ export function Character({
     [routeKey],
   );
   const [hovered, setHovered] = useState(false);
+  const cursorIdentity = useRef({});
+  useEffect(() => () => releaseResidentCursor(cursorIdentity.current), []);
   const reduced = useReducedMotion();
   const [bubble, setBubble] = useState<{
     mode: "hidden" | "dot" | "compact" | "detail";
     placement: "above" | "below";
     alignment: "left" | "center" | "right";
   }>({ mode: "compact", placement: "above", alignment: "center" });
+  // Drei Html lives in a DOM portal and does not inherit Group.visible.
+  // Keep offsite actors out of both the rendered scene and keyboard hit area.
+  const [bubbleVisible, setBubbleVisible] = useState(
+    transition?.direction !== "arriving",
+  );
+  const visibleBubble = useRef(bubbleVisible);
+  function setActorVisibility(visible: boolean) {
+    if (group.current) group.current.visible = visible;
+    if (visibleBubble.current !== visible) {
+      visibleBubble.current = visible;
+      setBubbleVisible(visible);
+      if (!visible) {
+        setHovered(false);
+        releaseResidentCursor(cursorIdentity.current);
+      }
+    }
+  }
   const lastBubble = useRef("");
   const bubbleTick = useRef(0);
   const stateStarted = useRef({
@@ -381,10 +426,91 @@ export function Character({
   const [visual, setVisual] = useState("");
   const total = useMemo(() => routeLength(desk.route), [desk]);
   const prevVisual = useRef("");
+  // View/transport boundaries cancel travel without destroying the loaded rig
+  // or restarting its current state animation. Ordinary snapshots keep scope.
+  useLayoutEffect(() => {
+    Object.assign(motion.current, createMotion());
+    travel.current = null;
+    turning.current = false;
+    releaseLifecycleWalk(reservations.current, roomId, trafficId);
+    if (group.current) {
+      setActorVisibility(transition?.direction !== "arriving");
+      group.current.rotation.set(0, desk.orientation, 0);
+      const arrival = transition?.direction === "arriving" && lifecycleRoute;
+      group.current.position.set(
+        arrival ? arrival[0][0] : desk.seat[0],
+        arrival ? RESIDENT_STANDING_Y : RESIDENT_SEATED_Y,
+        arrival ? arrival[0][1] : desk.seat[1],
+      );
+    }
+  }, [motionScope, roomId]);
+  // Capture direction changes when React commits them, even when the frame
+  // loop is paused. Otherwise stop/start updates between two frames would
+  // forget the queued departure and respawn a seated actor outdoors.
+  function syncLifecycleTravel() {
+    if (!transition || !lifecycleRoute) return null;
+    const m = motion.current;
+    if (
+      !travel.current ||
+      (travel.current.state.phase === "settled" &&
+        travel.current.token !== transition.token)
+    ) {
+      travel.current = {
+        routeKey,
+        route: lifecycleRoute,
+        total: lifecycleTotal,
+        token: transition.token,
+        state: createLifecycleWalk(transition.direction, lifecycleTotal),
+      };
+      // A new run marker for somebody already strolling does not teleport
+      // them outdoors. Safely return that existing actor, then settle seated.
+      if (transition.direction === "arriving" && m.mode !== "seated")
+        travel.current.state.distance = lifecycleTotal;
+    }
+    // A still-hidden successor may be assigned another chair if the original
+    // departing owner restarts. Updating an offsite route is safe; an active
+    // path is immutable until completion or an explicit view-scope reset.
+    if (
+      travel.current.routeKey !== routeKey &&
+      travel.current.state.phase === "waiting" &&
+      travel.current.state.direction === "arriving" &&
+      travel.current.state.distance === 0
+    ) {
+      travel.current.routeKey = routeKey;
+      travel.current.route = lifecycleRoute;
+      travel.current.total = lifecycleTotal;
+    }
+    travel.current.token = transition.token;
+    reverseLifecycleWalk(
+      travel.current.state,
+      transition.direction,
+      travel.current.total,
+    );
+    return travel.current;
+  }
+  useLayoutEffect(() => {
+    const journey = syncLifecycleTravel();
+    // A genuinely fresh arrival begins offsite. An in-flight stop/restart is
+    // a reversal of the visible actor and must never hide or reposition it.
+    if (
+      group.current &&
+      journey?.state.direction === "arriving" &&
+      journey.state.phase === "waiting" &&
+      journey.state.distance === 0 &&
+      motion.current.mode === "seated"
+    )
+      setActorVisibility(false);
+  }, [transition?.token, transition?.direction, routeKey, motionScope, roomId]);
   useEffect(() => {
     if (!command || command.id !== agent.id) return;
     const commandKey = `${command.id}:${command.type}:${command.serial}`;
-    if (!consumeVisualCommand(reservations.current, trafficId, commandKey))
+    if (
+      !consumeVisualCommand(
+        reservations.current,
+        residentIdentity(roomId, agent),
+        commandKey,
+      )
+    )
       return;
     if (transition) return;
     if (reduced) {
@@ -420,17 +546,6 @@ export function Character({
     },
     [mixer],
   );
-  const setPose = (name: string) => {
-    const next = actions[name];
-    // A clip name can survive a replaced mixer or stopped action. Compare the
-    // actual action and its scheduling so a fresh rig always starts playback.
-    if (currentAction.current === next && next?.isScheduled()) return;
-    if (next) {
-      for (const action of Object.values(actions)) action.fadeOut(0.2);
-      next.reset().fadeIn(0.2).play();
-    }
-    currentAction.current = next || null;
-  };
   useFrame(({ clock, camera }, rawDelta) => {
     const delta = motionFrameDelta(rawDelta);
     const m = motion.current;
@@ -442,41 +557,10 @@ export function Character({
     let returningBeforeExit = false;
     let enteringFromOffsite = false;
     if (transition && lifecycleRoute) {
-      if (
-        !travel.current ||
-        (travel.current.state.phase === "settled" &&
-          travel.current.token !== transition.token)
-      ) {
-        travel.current = {
-          routeKey,
-          route: lifecycleRoute,
-          total: lifecycleTotal,
-          token: transition.token,
-          state: createLifecycleWalk(transition.direction, lifecycleTotal),
-        };
-        // A new run marker for somebody already strolling does not teleport
-        // them outdoors. Safely return that existing actor, then settle seated.
-        if (transition.direction === "arriving" && m.mode !== "seated")
-          travel.current.state.distance = lifecycleTotal;
-      }
-      // A still-hidden successor may be assigned another chair if the original
-      // departing owner restarts. Updating an offsite route is safe; an active
-      // path is immutable until completion or an explicit view-scope reset.
-      if (
-        travel.current.routeKey !== routeKey &&
-        travel.current.state.phase === "waiting" &&
-        travel.current.state.direction === "arriving" &&
-        travel.current.state.distance === 0
-      ) {
-        travel.current.routeKey = routeKey;
-        travel.current.route = lifecycleRoute;
-        travel.current.total = lifecycleTotal;
-      }
-      life = travel.current.state;
-      activeLifecycleRoute = travel.current.route;
-      activeLifecycleTotal = travel.current.total;
-      travel.current.token = transition.token;
-      reverseLifecycleWalk(life, transition.direction, activeLifecycleTotal);
+      const journey = syncLifecycleTravel()!;
+      life = journey.state;
+      activeLifecycleRoute = journey.route;
+      activeLifecycleTotal = journey.total;
       enteringFromOffsite =
         life.phase === "waiting" &&
         life.direction === "arriving" &&
@@ -536,10 +620,12 @@ export function Character({
     );
     const point = routePose.position;
     const wasVisible = group.current.visible;
-    group.current.visible = !(
-      traveling &&
-      ((traveling.phase === "settled" && traveling.direction === "exiting") ||
-        (traveling.phase === "waiting" && traveling.direction === "arriving"))
+    setActorVisibility(
+      !(
+        traveling &&
+        ((traveling.phase === "settled" && traveling.direction === "exiting") ||
+          (traveling.phase === "waiting" && traveling.direction === "arriving"))
+      ),
     );
     group.current.userData.lifecycle = traveling
       ? {
@@ -600,11 +686,10 @@ export function Character({
             ? stateClip
             : "idle";
     const pose = actions[wanted] ? wanted : seated ? "idleseated" : "idle";
-    setPose(pose);
+    blendPose(pose, delta, reduced);
     if (reduced) {
       const action = actions[pose];
       if (action) {
-        action.fadeIn(0);
         action.time = 0;
         action.paused = true;
       }
@@ -695,31 +780,24 @@ export function Character({
     }
   });
   return (
-    <group
-      ref={group}
-      name={`resident-${agent.id}`}
-      visible={transition?.direction !== "arriving"}
-      rotation={[0, desk.orientation, 0]}
-      position={
-        transition?.direction === "arriving" && lifecycleRoute
-          ? [lifecycleRoute[0][0], RESIDENT_STANDING_Y, lifecycleRoute[0][1]]
-          : [desk.seat[0], RESIDENT_SEATED_Y, desk.seat[1]]
-      }
-    >
+    <group ref={group} name={`resident-${agent.id}`}>
       <group
         onClick={(e) => {
+          // Three raycasting includes invisible descendants, unlike rendering.
+          if (!group.current?.visible) return;
           e.stopPropagation();
           // OrbitControls also finishes with a click; dragging must not select.
           if (e.delta <= 4) onSelect();
         }}
         onPointerOver={(e) => {
+          if (!group.current?.visible) return;
           e.stopPropagation();
           setHovered(true);
-          document.body.style.cursor = "pointer";
+          claimResidentCursor(cursorIdentity.current);
         }}
         onPointerOut={() => {
           setHovered(false);
-          document.body.style.cursor = "auto";
+          releaseResidentCursor(cursorIdentity.current);
         }}
       >
         <primitive object={rig} />
@@ -746,48 +824,24 @@ export function Character({
           />
         </mesh>
       </group>
-      <AgentBubble
-        agent={agent}
-        selected={selected}
-        hovered={hovered}
-        mode={bubble.mode}
-        placement={bubble.placement}
-        alignment={bubble.alignment}
-        onSelect={onSelect}
-        onHover={setHovered}
-        visual={visual}
-        reduced={reduced}
-      />
+      {bubbleVisible && (
+        <AgentBubble
+          agent={agent}
+          selected={selected}
+          hovered={hovered}
+          mode={bubble.mode}
+          placement={bubble.placement}
+          alignment={bubble.alignment}
+          onSelect={onSelect}
+          onHover={setHovered}
+          visual={visual}
+          reduced={reduced}
+        />
+      )}
     </group>
   );
 }
-function Room({
-  session,
-  layout,
-  selected,
-  onSelect,
-  command,
-  positions,
-  reservations,
-  residents,
-  layouts,
-  onComplete,
-}: {
-  session: Session;
-  layout: RoomLayout;
-  selected: string | null;
-  onSelect: (id: string) => void;
-  command: Command;
-  positions: Registry;
-  reservations: React.MutableRefObject<Map<string, string>>;
-  residents: ResidentEntry[];
-  layouts: RoomLayout[];
-  onComplete: (
-    key: string,
-    token: string,
-    direction: LifecycleDirection,
-  ) => void;
-}) {
+function Room({ session, layout }: { session: Session; layout: RoomLayout }) {
   const [x, z] = layout.center;
   return (
     <group>
@@ -822,39 +876,6 @@ function Room({
           />
         </group>
       ))}
-      {residents.map((resident) => {
-        const desk = layout.desks[resident.deskIndex];
-        if (!desk) return null;
-        return (
-          <Suspense key={resident.key} fallback={null}>
-            <Character
-              agent={resident.agent}
-              desk={desk}
-              roomId={session.id}
-              selected={selected === resident.agent.id}
-              onSelect={() => onSelect(resident.agent.id)}
-              command={command}
-              positions={positions}
-              reservations={reservations}
-              index={resident.deskIndex + layout.index * 3}
-              transition={resident.transition}
-              lifecycleRoute={
-                resident.transition
-                  ? createBuildingEntryRoute(
-                      layouts,
-                      layout,
-                      desk,
-                      resident.transition.queueIndex,
-                    )
-                  : undefined
-              }
-              onLifecycleComplete={(token, direction) =>
-                onComplete(resident.key, token, direction)
-              }
-            />
-          </Suspense>
-        );
-      })}
       {!layout.desks.length && (
         <>
           <Asset name="desk" position={[x, 0.04, z - 1.4]} rotation={Math.PI} />
@@ -873,6 +894,76 @@ function Room({
         distance={6}
         color="#d9efff"
       />
+    </group>
+  );
+}
+export function ResidentLayer({
+  residents,
+  layouts,
+  selected,
+  onSelect,
+  command,
+  positions,
+  reservations,
+  scope,
+  onComplete,
+}: {
+  residents: ResidentEntry[];
+  layouts: RoomLayout[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+  command: Command;
+  positions: Registry;
+  reservations: React.MutableRefObject<Map<string, string>>;
+  scope: string;
+  onComplete: (
+    key: string,
+    token: string,
+    direction: LifecycleDirection,
+  ) => void;
+}) {
+  return (
+    <group>
+      {residents.map((resident) => {
+        const layout = layouts.find((room) => room.id === resident.roomId);
+        const desk = layout?.desks[resident.deskIndex];
+        if (!layout || !desk) return null;
+        return (
+          <Suspense key={resident.key} fallback={null}>
+            <Character
+              agent={resident.agent}
+              desk={desk}
+              roomId={resident.roomId}
+              selected={selected === resident.agent.id}
+              onSelect={() => onSelect(resident.agent.id)}
+              command={command}
+              positions={positions}
+              reservations={reservations}
+              index={resident.deskIndex + layout.index * 3}
+              motionScope={JSON.stringify([
+                scope,
+                layout.id,
+                layout.index,
+                layouts.length,
+              ])}
+              transition={resident.transition}
+              lifecycleRoute={
+                resident.transition
+                  ? createBuildingEntryRoute(
+                      layouts,
+                      layout,
+                      desk,
+                      resident.transition.queueIndex,
+                    )
+                  : undefined
+              }
+              onLifecycleComplete={(token, direction) =>
+                onComplete(resident.key, token, direction)
+              }
+            />
+          </Suspense>
+        );
+      })}
     </group>
   );
 }
@@ -906,7 +997,7 @@ export default function Office({
   onStopFollow: () => void;
 }) {
   const reduced = useReducedMotion();
-  const { residents, complete, scope } = useResidentLifecycle({
+  const { residents, complete } = useResidentLifecycle({
     sessions,
     selected,
     events: lifecycleEvents,
@@ -986,21 +1077,25 @@ export default function Office({
           </Html>
         }
       >
-        {rooms.map((s, i) => (
-          <Room
-            key={`${s.id}:${scope}`}
-            session={s}
-            layout={layouts[i]}
-            selected={selected}
-            onSelect={onSelect}
-            command={command}
-            positions={positions}
-            reservations={reservations}
-            residents={residents.filter((resident) => resident.roomId === s.id)}
-            layouts={layouts}
-            onComplete={complete}
-          />
+        {rooms.map((session, i) => (
+          <Room key={session.id} session={session} layout={layouts[i]} />
         ))}
+        <ResidentLayer
+          residents={residents}
+          layouts={layouts}
+          selected={selected}
+          onSelect={onSelect}
+          command={command}
+          positions={positions}
+          reservations={reservations}
+          scope={JSON.stringify([
+            lifecycleEpoch,
+            lifecycleEnabled,
+            reduced,
+            connection,
+          ])}
+          onComplete={complete}
+        />
         <SharedWorkplace count={rooms.length} onFacility={onFacility} />
         <BuildingEntrance count={rooms.length} />
         <ContactShadows

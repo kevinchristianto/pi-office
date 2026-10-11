@@ -233,3 +233,37 @@ describe("marker-driven rendered resident lifetimes", () => {
     ).toEqual(["hidden-0"]);
   });
 });
+
+it("cancels only an unrendered departure when stop and restart share a render", () => {
+  const hook = setup();
+  hook.update({
+    events: [event("stop", "brief-stop"), event("start", "brief-start")],
+  });
+  expect(hook.result.current.residents).toHaveLength(1);
+  expect(hook.result.current.residents[0].transition).toBeUndefined();
+  hook.update({ events: [event("stop", "real-stop")] });
+  const outgoing = hook.result.current.residents[0];
+  act(() => hook.result.current.complete(outgoing.key, "real-stop", "exiting"));
+  expect(hook.result.current.residents).toHaveLength(0);
+  hook.update({
+    events: [event("stop", "offsite-stop"), event("start", "new-arrival")],
+  });
+  expect(hook.result.current.residents[0].transition).toMatchObject({
+    direction: "arriving",
+    token: "new-arrival",
+  });
+});
+
+it("does not show a new resident whose arrival and stop share a render", () => {
+  const hook = setup();
+  hook.update({
+    sessions: [session([agent(), agent("b")])],
+    events: [
+      event("start", "brief-start", "b"),
+      event("stop", "brief-stop", "b"),
+    ],
+  });
+  expect(hook.result.current.residents.map((entry) => entry.agent.id)).toEqual([
+    "a",
+  ]);
+});

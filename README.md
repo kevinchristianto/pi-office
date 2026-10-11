@@ -4,7 +4,7 @@ A full-window, local 3D office for your Pi coding agents. Sessions working in th
 
 **View-only local workplace. Native Windows runtime. No cloud account, telemetry, external fonts or remote assets.** The initial view is live and empty until you connect a session. Demo mode is explicitly labeled sample data and never mixed with live data.
 
-Existing installation? See [UPDATING.md](UPDATING.md) to preserve your token and extension path while applying the 0.5.0 workplace update.
+Existing installation? See [UPDATING.md](UPDATING.md) to preserve your token and extension path while applying the 0.5.1 animation-stability update.
 
 ## Windows quick start
 
@@ -12,7 +12,7 @@ If you cloned the Git repository, run `npm ci` and `npm run build` in the reposi
 
 Install a supported Node.js LTS release (22.20 or newer; Node 24 recommended) from https://nodejs.org/. Keep Pi installed and updated using its own official installation instructions. This app does not install, update or pin Pi.
 
-The ZIP includes a prebuilt browser bundle. For the simplest start, double-click `START-OFFICE.cmd` after installing Node.js, then open the local URL it prints. This needs no npm install. To connect a Pi session, open PowerShell in your project folder and run `& 'C:\Users\you\pi-office\CONNECT-PI.cmd'`. Adjust the path to where you extracted the app. The launcher passes through extra Pi arguments and does not change your project directory. These Windows launchers are provided for convenience and have not been executed on Windows here.
+For a release ZIP that includes a prebuilt browser bundle, double-click `START-OFFICE.cmd` after installing Node.js, then open the local URL it prints. This needs no npm install. To connect a Pi session, open PowerShell in your project folder and run `& 'C:\Users\you\pi-office\CONNECT-PI.cmd'`. Adjust the path to where you extracted the app. The launcher passes through extra Pi arguments and does not change your project directory. These Windows launchers are provided for convenience and have not been executed on Windows here.
 
 For a source build, or to follow every step explicitly:
 
@@ -20,7 +20,7 @@ For a source build, or to follow every step explicitly:
 2. Run:
 
    ```powershell
-   npm install
+   npm ci
    npm run build
    npm start
    ```

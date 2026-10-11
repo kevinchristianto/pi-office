@@ -191,6 +191,7 @@
   color: var(--workplace-muted);
 }
 .workplace-stats dd {
+  color: #304d40;
   font-size: 29px;
   font-weight: 400;
   margin: 0;
