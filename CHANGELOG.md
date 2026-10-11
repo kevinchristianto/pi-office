@@ -1,3 +1,13 @@
+# 0.5.2 · Live office and retained history
+
+- Keep offline and confirmed-stopped residents out of live desks, including initial snapshots and reconnects
+- Preserve genuine observed walk-outs until completion and allow genuinely restarted agents to return
+- Keep historical sessions and agents accessible through the roster and Inspect, without enabling physical follow or gestures for absent residents
+- Retain stale residents during the existing connection grace period; never invent a walk-out for lost contact
+- Preserve bridge history, source identities, authored assets and navigation
+
+See TESTING.md for current verification. This patch changes the browser presentation only; an observer reload is not needed when upgrading from 0.5.1.
+
 # 0.5.1 · Stable resident animation and code audit
 
 - Keep continuous older bridge snapshots from repeatedly resetting the scene; unversioned data remains ineligible for inferred arrival/departure events

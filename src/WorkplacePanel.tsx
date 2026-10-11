@@ -15,7 +15,7 @@ import {
 import { activityLine, presentation } from "./agentPresentation";
 import { stateColor } from "./state";
 import type { Agent, Session } from "./types";
-import { projectRosterSummary } from "./projectProjection";
+import { isHistoricalAgent, projectRosterSummary } from "./projectProjection";
 import "./workplace-panel.css";
 
 export type WorkplaceFacility =
@@ -62,8 +62,9 @@ const facilities = [
 ] as const;
 const ATTENTION_STATES = ["error", "waiting", "stale", "offline"];
 const MAX_ACTIVITY = 80;
-const isWorking = (agent: Agent) =>
-  !agent.source?.historical && ["working", "thinking"].includes(agent.state);
+const isWorking = (session: Session, agent: Agent) =>
+  !isHistoricalAgent(session, agent) &&
+  ["working", "thinking"].includes(agent.state);
 function timestamp(value: number | string) {
   const result = new Date(value).getTime();
   return Number.isFinite(result) ? result : null;
@@ -166,14 +167,21 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
   const residents = sessions.flatMap((session) =>
     session.agents.map((agent) => ({ session, agent })),
   );
+  const currentResidents = residents.filter(
+    ({ session, agent }) => !isHistoricalAgent(session, agent),
+  );
   const resident =
-    residents.find(({ agent }) => agent.id === residentId) ?? residents[0];
+    residents.find(({ agent }) => agent.id === residentId) ??
+    currentResidents[0] ??
+    residents[0];
+  const residentIsHistorical =
+    !!resident && isHistoricalAgent(resident.session, resident.agent);
   const attention = residents
     .filter(({ agent }) => ATTENTION_STATES.includes(agent.state))
     .sort(
       (a, b) =>
-        Number(!!a.agent.source?.historical) -
-          Number(!!b.agent.source?.historical) ||
+        Number(isHistoricalAgent(a.session, a.agent)) -
+          Number(isHistoricalAgent(b.session, b.agent)) ||
         ATTENTION_STATES.indexOf(a.agent.state) -
           ATTENTION_STATES.indexOf(b.agent.state) ||
         a.agent.name.localeCompare(b.agent.name),
@@ -206,7 +214,9 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
         : connection === "connecting"
           ? "Connecting to Pi"
           : "Disconnected · last received data";
-  const working = residents.filter(({ agent }) => isWorking(agent)).length;
+  const working = residents.filter(({ session, agent }) =>
+    isWorking(session, agent),
+  ).length;
   return (
     <div
       className="workplace-backdrop"
@@ -295,8 +305,8 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
                     <dd>{sessions.length}</dd>
                   </div>
                   <div>
-                    <dt>Agents</dt>
-                    <dd>{residents.length}</dd>
+                    <dt>Current agents</dt>
+                    <dd>{currentResidents.length}</dd>
                   </div>
                   <div>
                     <dt>Working / thinking</dt>
@@ -307,6 +317,15 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
                     <dd>{attention.length}</dd>
                   </div>
                 </dl>
+                {residents.length > currentResidents.length && (
+                  <p className="workplace-note">
+                    {residents.length - currentResidents.length} historical{" "}
+                    {residents.length - currentResidents.length === 1
+                      ? "observation remains"
+                      : "observations remain"}{" "}
+                    available in the agent roster.
+                  </p>
+                )}
                 <div className="workplace-section-heading">
                   <h3>Office directory</h3>
                   <button type="button" onClick={() => run(onOpenRoster)}>
@@ -330,8 +349,12 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
                           <strong>{session.name}</strong>
                           <small>
                             {projectRosterSummary(session)} ·{" "}
-                            {session.agents.filter(isWorking).length} working or
-                            thinking
+                            {
+                              session.agents.filter((agent) =>
+                                isWorking(session, agent),
+                              ).length
+                            }{" "}
+                            working or thinking
                           </small>
                           {session.cwd && <small>{session.cwd}</small>}
                         </span>
@@ -390,7 +413,12 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
                                 <div>
                                   <strong>
                                     {agent.name}
-                                    <span>{presentation(agent).label}</span>
+                                    <span>
+                                      {isHistoricalAgent(session, agent)
+                                        ? "Historical · "
+                                        : ""}
+                                      {presentation(agent).label}
+                                    </span>
                                   </strong>
                                   <p>{activityLine(agent)}</p>
                                 </div>
@@ -448,7 +476,9 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
                           <strong>{agent.name}</strong>
                           <small>
                             {session.name}
-                            {agent.source?.historical ? " · Historical" : ""}
+                            {isHistoricalAgent(session, agent)
+                              ? " · Historical"
+                              : ""}
                             {agent.source
                               ? ` · ${agent.source.sessionName}`
                               : ""}
@@ -490,7 +520,12 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
                         >
                           <div className="workplace-activity-meta">
                             <strong>{entry.agent.name}</strong>
-                            <span>{entry.session.name}</span>
+                            <span>
+                              {entry.session.name}
+                              {isHistoricalAgent(entry.session, entry.agent)
+                                ? " · Historical"
+                                : ""}
+                            </span>
                             <ReportedTime value={entry.time} />
                           </div>
                           <p>{entry.message}</p>
@@ -531,7 +566,9 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
                         >
                           {agent.name} · {session.name}
                           {agent.source ? ` · ${agent.source.sessionName}` : ""}
-                          {agent.source?.historical ? " · Historical" : ""}
+                          {isHistoricalAgent(session, agent)
+                            ? " · Historical"
+                            : ""}
                         </option>
                       ))}
                     </select>
@@ -539,13 +576,25 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
                       <i
                         style={{ background: stateColor(resident.agent.state) }}
                       />
+                      {residentIsHistorical ? "Historical · " : ""}
                       {presentation(resident.agent).label}
                       <span>{activityLine(resident.agent)}</span>
                     </div>
+                    {onVisualCommand && residentIsHistorical && (
+                      <button
+                        className="workplace-primary"
+                        type="button"
+                        onClick={() => run(() => onSelect(resident.agent.id))}
+                      >
+                        Inspect historical agent
+                        <ArrowUpRight size={15} />
+                      </button>
+                    )}
                     {onVisualCommand ? (
                       <div className="workplace-visual-actions">
                         <button
                           type="button"
+                          disabled={residentIsHistorical}
                           onClick={() =>
                             run(() =>
                               onVisualCommand(resident.agent.id, "walk"),
@@ -557,6 +606,7 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
                         </button>
                         <button
                           type="button"
+                          disabled={residentIsHistorical}
                           onClick={() =>
                             run(() =>
                               onVisualCommand(resident.agent.id, "wave"),
@@ -568,6 +618,7 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
                         </button>
                         <button
                           type="button"
+                          disabled={residentIsHistorical}
                           onClick={() =>
                             run(() =>
                               onVisualCommand(resident.agent.id, "return"),
@@ -584,12 +635,16 @@ export default function WorkplacePanel(props: WorkplacePanelProps) {
                         type="button"
                         onClick={() => run(() => onSelect(resident.agent.id))}
                       >
-                        Open resident controls
+                        {residentIsHistorical
+                          ? "Inspect historical agent"
+                          : "Open resident controls"}
                         <ArrowUpRight size={15} />
                       </button>
                     )}
                     <p className="workplace-note">
-                      Visual interactions only. Pi continues independently.
+                      {residentIsHistorical
+                        ? "Historical observation. No current character to animate. Details remain available in the agent roster."
+                        : "Visual interactions only. Pi continues independently."}
                     </p>
                   </div>
                 ) : (

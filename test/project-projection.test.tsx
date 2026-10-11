@@ -161,7 +161,7 @@ describe("pure project office projection", () => {
     expect(shown[0].name).toBe("Live root");
     expect(shown.every((agent) => !agent.source!.historical)).toBe(true);
     const selected = visualAgentId("old", "old-7");
-    expect(visibleAgents(offices[0], selected).at(-1)!.id).toBe(selected);
+    expect(visibleAgents(offices[0], selected)).toEqual(shown);
   });
 
   it("does not mistake an idle live root for historical work", () => {

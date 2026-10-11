@@ -56,7 +56,11 @@ const availability = (session: Session) => {
     ? 2
     : 0;
 };
-const historical = (session: Session, agent: Agent) =>
+/** History stays inspectable, but must not occupy a live-office desk.
+ * A grouped office can be live while this resident belongs to an offline source.
+ * Stale contact remains current during the bridge's existing grace period. */
+export const isHistoricalAgent = (session: Session, agent: Agent): boolean =>
+  agent.source?.historical === true ||
   availability(session) === 2 ||
   agent.state === "offline" ||
   agent.lifecycle?.kind === "stop";
@@ -143,8 +147,8 @@ export function projectOffices(sessions: readonly Session[]): ProjectOffice[] {
       );
       roster.sort(
         (a, b) =>
-          Number(historical(a.session, a.agent)) -
-            Number(historical(b.session, b.agent)) ||
+          Number(isHistoricalAgent(a.session, a.agent)) -
+            Number(isHistoricalAgent(b.session, b.agent)) ||
           availability(a.session) - availability(b.session) ||
           Number(rootAgent(b.session, b.agent)) -
             Number(rootAgent(a.session, a.agent)) ||
@@ -160,7 +164,7 @@ export function projectOffices(sessions: readonly Session[]): ProjectOffice[] {
           agentId: agent.id,
           cwd: session.cwd,
           model: session.model,
-          historical: historical(session, agent),
+          historical: isHistoricalAgent(session, agent),
         },
       }));
       const historyAgentCount = agents.filter(

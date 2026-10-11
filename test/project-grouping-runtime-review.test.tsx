@@ -53,6 +53,7 @@ let canvas: HTMLCanvasElement;
 let props: SimulationProps;
 let now: number;
 let reduced: boolean;
+let generation: number;
 let listeners: Set<() => void>;
 let entries: ResidentEntry[];
 let positions: CharacterProps["positions"];
@@ -144,7 +145,7 @@ async function render(changes: Partial<SimulationProps> = {}) {
   await act(async () => {
     root.render(
       <React.StrictMode>
-        <Simulation {...props} />
+        <Simulation key={generation} {...props} />
       </React.StrictMode>,
     );
   });
@@ -172,6 +173,7 @@ beforeEach(async () => {
   vi.stubGlobal("cancelAnimationFrame", () => {});
   now = 0;
   reduced = false;
+  generation = 0;
   listeners = new Set();
   vi.spyOn(performance, "now").mockImplementation(() => now * 1000);
   vi.stubGlobal("matchMedia", () => ({
@@ -225,6 +227,93 @@ afterEach(async () => {
 });
 
 describe("independent grouped-project R3F runtime review", () => {
+  it("mounts only current meshes from a fresh grouped snapshot and preserves retained historical source data", async () => {
+    const stop = marker("left", "stop", "historical-stop");
+    const left = session("left", "Left");
+    const history = {
+      ...left,
+      agents: [{ ...left.agents[0], state: "idle", lifecycle: stop }],
+    };
+    const offline = {
+      ...session("offline", "Offline"),
+      connectionState: "offline" as const,
+    };
+    const right = session("right", "Right");
+    generation++;
+    await render({ sessions: [history, offline, right], events: [], epoch: 2 });
+    await tick(1);
+    const scene = _roots.get(canvas)!.store.getState().scene;
+    for (const raw of [history, offline]) {
+      const [office] = projectOffices([raw]);
+      expect(
+        scene.getObjectByName(`resident-${office.agents[0].id}`),
+      ).toBeUndefined();
+    }
+    expect(entries.map((entry) => entry.agent.name)).toEqual(["Right"]);
+    expect(actor("Right")!.visible).toBe(true);
+    expect(projectOffices(props.sessions)[0].agents).toHaveLength(3);
+    expect(reservations.current.size).toBe(0);
+  });
+
+  it("keeps the real outgoing rig after current-roster filtering, removes it at the exit, and admits its newer start", async () => {
+    const left = session("left", "Left");
+    const right = session("right", "Right");
+    const leftRig = actor("Left")!,
+      rightRig = actor("Right")!;
+    const leftEntry = entries.find((entry) => entry.agent.name === "Left")!;
+    const stop = marker("left", "stop", "confirmed-stop");
+    const history = {
+      ...left,
+      agents: [{ ...left.agents[0], lifecycle: stop, state: "idle" }],
+    };
+    await render({ sessions: [history, right], events: [stop] });
+    await tick(60);
+    expect(actor("Left")).toBe(leftRig);
+    expect(actor("Right")).toBe(rightRig);
+    expect(
+      entries.find((entry) => entry.key === leftEntry.key)?.transition
+        ?.direction,
+    ).toBe("exiting");
+    expect(
+      projectOffices(props.sessions)[0].agents.find(
+        (agent) => agent.name === "Left",
+      )?.source?.historical,
+    ).toBe(true);
+    await render({ events: [] });
+    await tick(2500);
+    await tick(1);
+    expect(
+      _roots
+        .get(canvas)!
+        .store.getState()
+        .scene.getObjectByName(`resident-${leftEntry.agent.id}`),
+    ).toBeUndefined();
+    expect(actor("Right")).toBe(rightRig);
+    expect(reservations.current.size).toBe(0);
+    const start = {
+      ...marker("left", "start", "newer-start"),
+      at: "2026-10-11T08:00:01.000Z",
+    };
+    await render({
+      sessions: [
+        { ...left, agents: [{ ...left.agents[0], lifecycle: start }] },
+        right,
+      ],
+      events: [start],
+    });
+    expect(
+      entries.find((entry) => entry.key === leftEntry.key)?.transition
+        ?.direction,
+    ).toBe("arriving");
+    await tick(2500);
+    await tick(1);
+    expect(actor("Left")!.visible).toBe(true);
+    expect(actor("Right")).toBe(rightRig);
+    expect(entries.every((entry) => !entry.transition)).toBe(true);
+    expect(reservations.current.size).toBe(0);
+    expect(lifecycleTrafficFor(reservations.current).queue).toEqual([]);
+  });
+
   it("preserves raw-ID appearance while giving colliding identities separate actors, desks and position registry keys", async () => {
     expect(entries).toHaveLength(2);
     expect(new Set(entries.map((entry) => entry.agent.id)).size).toBe(2);
@@ -325,7 +414,8 @@ describe("independent grouped-project R3F runtime review", () => {
     await render({ connection: "connected", epoch: 2 });
     await tick(120);
     expect(entries.every((entry) => !entry.transition)).toBe(true);
-    expect(actor("Left")!.visible && actor("Right")!.visible).toBe(true);
+    expect(actor("Left")).toBeUndefined();
+    expect(actor("Right")!.visible).toBe(true);
     expect(reservations.current.size).toBe(0);
   });
 });

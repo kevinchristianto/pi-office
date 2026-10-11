@@ -59,7 +59,7 @@ Click facility signs or the keyboard-accessible Workplace button for the directo
 
 The observer identifies the canonical Git **worktree root**, so sessions started in different subdirectories of one worktree share an office. Distinct worktrees and separate clones stay separate, even when their folder names match. Outside Git, the canonical working directory is the project boundary. Missing or unresolved paths stay session-isolated rather than being guessed from a name.
 
-This is a display grouping only. Every Pi session and agent retains its original transport identity, state, activity and lifecycle history. The combined roster prioritizes live members; older offline sessions remain inspectable without creating another office or pushing live members out of the desk window. Inspection retains the selected agent’s source session and working directory. Actual Pi work remains view-only.
+This is a display grouping only. Every Pi session and agent retains its original transport identity, state, activity and lifecycle history. The combined roster prioritizes current members. Offline or confirmed-stopped residents remain inspectable in history, but do not occupy live desks, including after a refresh or reconnect. A genuinely observed departure finishes before the resident disappears while its live view remains continuous; reconnects settle it absent rather than replaying the exit. Inspection retains the selected agent’s source session and working directory. Actual Pi work remains view-only.
 
 Reload the updated observer in each participating Pi session when its work is idle to obtain resolved project roots. Older observers can group exact absolute working-directory paths; they cannot reliably identify Git roots, filesystem aliases or parent/child relationships. An exact legacy root may join an unambiguous resolved project, but arbitrary nested paths are not guessed.
 
@@ -87,7 +87,7 @@ See [TESTING.md](TESTING.md) for current checks and exact limitations. Blender r
 - Drag to orbit, scroll to zoom, right-drag to pan. Focus the office canvas to use WASD/arrow keys; the help button lists keyboard and touch controls. Camera movement stays within the office. Fullscreen is optional.
 - Eight original adult resident models have distinct facial structure, hair, skin tones, stature and outfits. Appearance is assigned from agent ID, so selecting, reordering, switching rooms or changing task/state never rerolls it. These are visual identities, unrelated to roles or real people.
 - The styled project selector focuses a project or shows the first four sections, prioritizing projects with live sessions. Each section shows up to six desks for performance. Every retained agent remains accessible in the roster; selecting an overflow agent brings its desk into view.
-- Work types; thinking, waiting, idle, error, completion and offline states have distinct restrained poses. Completion reacts once and settles. These reflect reported state, not an inferred task result.
+- Work types; thinking, waiting, idle, error and completion states have distinct restrained poses. Offline history is inspected in the roster rather than seated in the live office. Completion reacts once and settles. These reflect reported state, not an inferred task result.
 - OS reduced-motion preference freezes ambient/state gestures. Requested moves change location without an animated traverse, and camera following moves without easing.
 - Low 1.15 m partitions define facing workstation pairs. Swept route tests cover tables, chairs, panels, corporate fixtures and the marked entrance/corridors. Normal visual strolls stay inside each department; lifecycle travel uses the shared entrance.
 - Live is the default. Explore demo uses clearly labeled sample agents; demo values never mix with actual sessions.
@@ -170,7 +170,7 @@ See `TESTING.md` for the exact checks actually executed and the untested boundar
 
 **Unavailable model/usage/cost:** The current session or extension did not report that field. This is deliberately shown as unavailable; it is not zero usage.
 
-**Stale/offline:** The latest heartbeat is old. The observer retries automatically while Pi is running. Closed sessions remain in the bounded in-memory history until evicted by newer sessions or the bridge restarts. Active rows become stale after 35 seconds and offline after 120 seconds without a heartbeat.
+**Stale/offline:** The latest heartbeat is old. The observer retries automatically while Pi is running. Closed sessions remain in the bounded in-memory history until evicted by newer sessions or the bridge restarts. Active rows become stale after 35 seconds and offline after 120 seconds without a heartbeat. Stale residents remain during that grace period; offline residents disappear from desks without an invented walk-out. History remains in the roster/Inspect and is not erased by this display policy.
 
 **Blank room:** Enable hardware acceleration, update your browser and check WebGL. Agent selection/detail still works without the scene.
 

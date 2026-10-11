@@ -1,4 +1,24 @@
-# Verification record · audited animation stability 0.5.1
+# Verification record · live office/history 0.5.2
+
+Date: 2026-10-11. Fresh clone of published `1786f6c38bfa24580c646dd2762cef5c2ccd2dab`. Cloud Linux only; no access to the user's computer. This is a frontend presentation fix, with bridge/observer history and source identities preserved.
+
+## Current verification
+
+Fresh `npm run check` passed against the final held source: frontend TypeScript/Vite build, strict observer TypeScript, **119 Node tests plus 390 Vitest tests across 36 files, 509 total**, with no skips. This includes 24 additional regressions since 0.5.1. Independent frontend/lifecycle cross-reviews passed. Four focused negative controls fail against the published baseline as expected.
+
+Prettier, configuration TypeScript and `git diff --check` pass. Source hashes were checked before and after the final aggregate run; no application source changed during that run.
+
+Coverage includes initial stopped/offline snapshots, refresh/reconnect, unfinished departures, stale grace versus offline contact, newer authoritative restarts, grouped source identities, historical selection, current/history counts, empty live offices and disabled physical controls for absent residents. Historical records remain accessible through the roster and Inspect. Genuine observed stops retain their actor until the exit completes in a continuous view; reconnect settles the stopped actor absent without replaying travel. Lost contact never synthesizes an exit.
+
+The desk furniture/layout remains stable while occupants change, avoiding route or collision-geometry churn. All 16 authored GLBs are byte-identical to the published baseline. Backend and observer source are unchanged. Dependency versions are unchanged; clean `npm ci --ignore-scripts` succeeded, and the fresh full npm advisory scan reports zero known vulnerabilities.
+
+Actual R3F/GLB tests use renderer stubs and do not verify browser pixels or GPU performance. Native Windows, real installed Pi/pi-subagents and browser WebGL/input remain unverified. The previously blocked browser route was not bypassed or retried. Historical Blender footage was not rerendered for this presentation change. This patch does not require an observer reload when upgrading from 0.5.1.
+
+The records below describe earlier source stages and are not the current test count.
+
+---
+
+# Historical verification · audited animation stability 0.5.1
 
 Date: 2026-10-11. Audited the uncommitted fix stage based on published commit `a549e0c935cee5e6b4eafa5f33569006b9f1dde4`. Cloud Linux only; no access to the user's computer. See [AUDIT.md](AUDIT.md) for the complete scope, confirmed corrections and residual risks.
 

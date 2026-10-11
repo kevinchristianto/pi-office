@@ -11,6 +11,10 @@
 
 There is no token rotation or automatic Pi settings migration. Never use `git clean -fdx` to upgrade: it can remove ignored local credentials and dependencies. Do not replace your complete Pi settings file with a sample from documentation.
 
+## Live office/history update (0.5.2)
+
+From 0.5.1, rebuild the browser bundle and hard-refresh the office tab. This patch does not change the bridge or observer and does not require a Pi observer reload. Historical agents remain available in the roster/Inspect but no longer occupy live desks. Stale contact retains its existing grace period; offline contact does not trigger an invented departure. If upgrading from older releases, also follow their observer-reload guidance below.
+
 ## Animation stability update (0.5.1)
 
 Rebuild the browser bundle, restart the bridge and hard-refresh the office tab using steps 1–4. The pre-release audit also hardened the observer against overlapping starts, delayed RPCs and ambiguous child identities. Reload the observer in every participating Pi session when work is idle using step 5, even when upgrading from 0.5.0. Older/unversioned bridge snapshots remain viewable without repeated rig resets, but cannot safely animate lifecycle events.

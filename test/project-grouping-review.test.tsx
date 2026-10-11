@@ -207,7 +207,18 @@ describe("independent actual-App project grouping review", () => {
     await user.click(
       screen.getByRole("button", { name: "Follow", exact: true }),
     );
-    expect(world.props.follow).toBe(displayed(hiddenName).id);
+    expect(world.props.follow).toBeNull();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Follow",
+          exact: true,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(residents().some((entry) => entry.agent.name === hiddenName)).toBe(
+      false,
+    );
   });
 
   it("keeps live roots and children in the six visible desks while historical residents stay individually inspectable", async () => {
@@ -224,13 +235,13 @@ describe("independent actual-App project grouping review", () => {
     await open([...history, active]);
     expect(world.props.sessions).toHaveLength(1);
     expect(world.props.sessions[0].agents).toHaveLength(10);
-    expect(residents()).toHaveLength(6);
+    expect(residents()).toHaveLength(2);
     expect(residents().map((entry) => entry.agent.name)).toEqual(
       expect.arrayContaining(["Current root", "Current child"]),
     );
     const user = await choose("History 7");
     expect(residents().some((entry) => entry.agent.name === "History 7")).toBe(
-      true,
+      false,
     );
     await user.click(screen.getByRole("button", { name: "Inspect" }));
     expect(screen.getByText("Task for History 7")).toBeTruthy();

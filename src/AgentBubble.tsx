@@ -33,6 +33,9 @@ export default function AgentBubble({
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const info = presentation(agent);
+  const label = agent.source?.historical
+    ? `Historical · ${info.label}`
+    : info.label;
   const expanded = (hovered || focused || inside) && !dismissed;
   useEffect(() => {
     if (hovered || focused || inside) setDismissed(false);
@@ -82,7 +85,7 @@ export default function AgentBubble({
       >
         <button
           className="bubble-trigger"
-          aria-label={`${agent.name}: ${info.label}. Show agent details`}
+          aria-label={`${agent.name}: ${label}. Show agent details`}
           aria-describedby={expanded ? id : undefined}
           onFocus={() => {
             setFocused(true);
@@ -117,7 +120,7 @@ export default function AgentBubble({
             <span className="bubble-copy">
               <strong>
                 {agent.name}
-                <small>{info.label}</small>
+                <small>{label}</small>
               </strong>
               <span>{visual ? `${visual} · visual` : activityLine(agent)}</span>
             </span>
@@ -127,12 +130,14 @@ export default function AgentBubble({
           <div className="bubble-tooltip" role="tooltip" id={id}>
             <div className="bubble-tooltip-heading">
               <strong>{agent.name}</strong>
-              <span>{info.label}</span>
+              <span>{label}</span>
             </div>
             <p>{agent.task?.trim() || "No task reported"}</p>
             <dl>
               <div>
-                <dt>Tool</dt>
+                <dt>
+                  {agent.source?.historical ? "Last reported tool" : "Tool"}
+                </dt>
                 <dd>{agent.tool?.trim() || "No active tool"}</dd>
               </div>
               <div>

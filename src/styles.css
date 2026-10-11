@@ -1438,11 +1438,41 @@ dd {
   font-size: 14px;
   letter-spacing: 0.02em;
 }
+/* Keep empty-office guidance in the HUD corner, clear of the departure route. */
+.history-empty-note {
+  position: absolute;
+  top: 154px;
+  left: 30px;
+  z-index: 20;
+  width: 235px;
+  max-width: calc(100vw - 32px);
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #aec7d64a;
+  border-radius: 8px;
+  background: #19364de8;
+  color: #e7f2f7;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.history-empty-note button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  font-size: 11px;
+  text-align: left;
+}
 @media (max-width: 700px) {
   .workplace-open {
     top: 92px;
     left: 16px;
     padding: 8px 10px;
+  }
+  .history-empty-note {
+    top: 137px;
+    left: 16px;
   }
   .facility-label {
     font-size: 10px;

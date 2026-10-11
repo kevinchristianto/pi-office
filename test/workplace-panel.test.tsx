@@ -97,7 +97,7 @@ describe("shared workplace panel", () => {
     );
     expect(counts).toEqual([
       ["Projects", "2"],
-      ["Agents", "4"],
+      ["Current agents", "3"],
       ["Working / thinking", "1"],
       ["Review states", "3"],
     ]);

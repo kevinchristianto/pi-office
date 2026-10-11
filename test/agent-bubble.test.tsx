@@ -122,6 +122,32 @@ describe("useful fixed-size agent bubbles", () => {
     );
     expect(screen.queryByRole("button")).toBeNull();
   });
+  it("labels a retained departing history bubble as a last observation", () => {
+    render(
+      <AgentBubble
+        agent={{
+          ...agent,
+          source: {
+            sessionId: "old-session",
+            sessionName: "Old session",
+            agentId: agent.id,
+            historical: true,
+          },
+        }}
+        selected={false}
+        hovered={true}
+        mode="compact"
+        onSelect={() => {}}
+        onHover={() => {}}
+        visual="Leaving office"
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /Nova: Historical · Working/ }),
+    ).toBeTruthy();
+    expect(screen.getByText("Last reported tool")).toBeTruthy();
+    expect(screen.getByText("Leaving office · animation only")).toBeTruthy();
+  });
   it("never invents missing work or freshness and chooses distinct state clips", () => {
     expect(activityLine({ id: "x", name: "Pi", state: "idle" })).toBe(
       "No active work reported",

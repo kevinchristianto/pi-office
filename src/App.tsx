@@ -35,7 +35,11 @@ import RoomSelector from "./RoomSelector";
 import { stateColor } from "./state";
 import { demo } from "./demo";
 import { useOfficeData } from "./useOfficeData";
-import { projectOffices, projectRosterSummary } from "./projectProjection";
+import {
+  isHistoricalAgent,
+  projectOffices,
+  projectRosterSummary,
+} from "./projectProjection";
 import type { CameraAction } from "./camera";
 const metric = (n: number | null | undefined) =>
   n == null ? "Not reported" : n.toLocaleString();
@@ -102,10 +106,27 @@ export default function App() {
   );
   const previousSessions = useRef(sessions);
   const agents = sessions.flatMap((s) => s.agents);
+  const currentAgents = sessions.flatMap((session) =>
+    session.agents.filter((item) => !isHistoricalAgent(session, item)),
+  );
+  const currentIds = new Set(currentAgents.map((item) => item.id));
+  const historyCount = agents.length - currentAgents.length;
   const agent = agents.find((a) => a.id === selected);
   const currentSession = sessions.find((s) =>
     s.agents.some((a) => a.id === selected),
   );
+  const historical = !!agent && !currentIds.has(agent.id);
+  // History is selectable for inspection, but never promoted into a desk or
+  // passed to the camera/character controls as a physical resident.
+  const physicalSelection =
+    selected && currentIds.has(selected) ? selected : null;
+  const physicalFollow = follow && currentIds.has(follow) ? follow : null;
+  const physicalCommand =
+    command && currentIds.has(command.id) ? command : null;
+  const physicalCameraAction =
+    cameraAction?.type === "focus" && !currentIds.has(cameraAction.id)
+      ? null
+      : cameraAction;
   // A legacy cwd room can acquire a canonical project ID after observer reload.
   // Resolve that view by its raw source sessions before rendering: an interim
   // empty room list would unmount the same selected/followed resident.
@@ -135,6 +156,12 @@ export default function App() {
     mode === "live"
       ? [...visibleWindow].sort((a, b) => a.id.localeCompare(b.id))
       : visibleWindow;
+  const shownCurrentCount = shownSessions.reduce(
+    (count, session) =>
+      count +
+      session.agents.filter((item) => !isHistoricalAgent(session, item)).length,
+    0,
+  );
   const filtered = agents.filter((a) =>
     `${a.name} ${a.task || ""} ${a.role || ""}`
       .toLowerCase()
@@ -146,6 +173,8 @@ export default function App() {
     setDetails(false);
     setRoster(false);
     setFollow(null);
+    setCommand(null);
+    setCameraAction(null);
     const target = sessions.find((s) => s.agents.some((a) => a.id === id));
     if (target && !shownSessions.some((s) => s.id === target.id)) {
       setFocusSession(target.id);
@@ -173,6 +202,14 @@ export default function App() {
     if (focusSession !== effectiveFocus) setFocusSession(effectiveFocus);
     previousSessions.current = sessions;
   }, [sessions, selected, focusSession, effectiveFocus]);
+  useEffect(() => {
+    // An offline timeout needs no invented departure. Keep its selected
+    // observation open while dropping physical interactions immediately.
+    if (follow && !currentIds.has(follow)) setFollow(null);
+    if (command && !currentIds.has(command.id)) setCommand(null);
+    if (cameraAction?.type === "focus" && !currentIds.has(cameraAction.id))
+      setCameraAction(null);
+  }, [sessions, follow, command, cameraAction]);
   useEffect(() => {
     const escape = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || facility) return;
@@ -222,6 +259,7 @@ export default function App() {
     };
   }, [guide]);
   const issueCommand = (id: string, type: "wave" | "walk" | "return") => {
+    if (!currentIds.has(id)) return;
     // Wall clocks can repeat or move backwards. Keep each explicit gesture
     // unique even across data-mode changes and view-only resident remounts.
     setCommand({ id, type, serial: ++commandSerial.current });
@@ -255,13 +293,13 @@ export default function App() {
               lifecycleEnabled={mode === "live"}
               connection={connection}
               sessions={shownSessions}
-              selected={selected}
+              selected={physicalSelection}
               onSelect={choose}
               reset={reset}
-              follow={follow}
-              command={command}
+              follow={physicalFollow}
+              command={physicalCommand}
               onStopFollow={() => setFollow(null)}
-              cameraAction={cameraAction}
+              cameraAction={physicalCameraAction}
             />
           </Suspense>
         </SceneBoundary>
@@ -312,14 +350,14 @@ export default function App() {
           className={`hud-button ${roster ? "chosen" : ""}`}
           aria-label="Open agent roster"
           aria-expanded={roster}
-          title="Agents"
+          title={`${currentAgents.length} current · ${historyCount} historical observations`}
           onClick={() => {
             setDetails(false);
             setRoster((v) => !v);
           }}
         >
           <Users size={17} />
-          <span>{agents.length}</span>
+          <span>{currentAgents.length} current</span>
         </button>
         <button
           className="hud-button help-button"
@@ -404,6 +442,23 @@ export default function App() {
           </div>
         </div>
       )}
+      {agents.length > 0 && shownCurrentCount === 0 && (
+        <div className="history-empty-note" role="status">
+          <strong>This office is quiet.</strong>
+          <p>
+            No current agents in this view. Previous observations are still
+            available in Agents.
+          </p>
+          <button
+            onClick={() => {
+              setDetails(false);
+              setRoster(true);
+            }}
+          >
+            Browse agent history <ArrowUpRight size={13} />
+          </button>
+        </div>
+      )}
       <div className="navigation-hint">
         <MousePointer2 size={13} />
         <span>Drag to orbit · Scroll to zoom · Right-drag to pan</span>
@@ -415,7 +470,7 @@ export default function App() {
         Manual camera controls stop following.
       </p>
       <div className="view-controls" role="group" aria-label="Camera controls">
-        {follow && (
+        {physicalFollow && (
           <button
             className="follow-chip"
             aria-label={`Stop following ${agent?.name || "agent"}`}
@@ -489,6 +544,7 @@ export default function App() {
               <strong>{agent.name}</strong>
               <span>
                 <i style={{ background: stateColor(agent.state) }} />
+                {historical ? "Historical · " : ""}
                 {agent.state} · {currentSession?.name}
               </span>
             </div>
@@ -515,6 +571,7 @@ export default function App() {
               Inspect
             </button>
             <button
+              disabled={historical}
               title="Frame this agent once"
               onClick={() => {
                 setFollow(null);
@@ -528,15 +585,16 @@ export default function App() {
               <Focus size={14} />
               Focus
             </button>
-            <button onClick={() => act("wave")}>
+            <button disabled={historical} onClick={() => act("wave")}>
               <Hand size={14} />
               Wave
             </button>
-            <button onClick={() => act("walk")}>
+            <button disabled={historical} onClick={() => act("walk")}>
               <Footprints size={14} />
               Take a walk
             </button>
             <button
+              disabled={historical}
               onClick={() => setFollow(follow === agent.id ? null : agent.id)}
               aria-pressed={follow === agent.id}
               title="Keep the camera with this agent; drag to stop"
@@ -546,6 +604,7 @@ export default function App() {
               {follow === agent.id ? "Unfollow" : "Follow"}
             </button>
             <button
+              disabled={historical}
               className="return-button"
               title="Return to desk"
               aria-label="Return agent to desk"
@@ -555,7 +614,9 @@ export default function App() {
             </button>
           </div>
           <p>
-            Character actions are visual only. Pi keeps working independently.
+            {historical
+              ? "Historical observation. No current character to focus, follow, or animate."
+              : "Character actions are visual only. Pi keeps working independently."}
           </p>
         </section>
       )}
@@ -563,7 +624,7 @@ export default function App() {
         <aside className="floating-panel roster-panel">
           <div className="panel-heading">
             <div>
-              <span>WHO'S HERE</span>
+              <span>CURRENT & HISTORY</span>
               <h2>Your agents</h2>
             </div>
             <button
@@ -604,7 +665,7 @@ export default function App() {
                       <div>
                         <strong>{a.name}</strong>
                         <span>
-                          {a.source?.historical ? "Historical · " : ""}
+                          {isHistoricalAgent(s, a) ? "Historical · " : ""}
                           {a.task || "No task reported"}
                         </span>
                         {a.source && (
@@ -665,11 +726,15 @@ export default function App() {
           <div className="detail-scroll">
             {tab === "overview" ? (
               <>
-                <label>CURRENT TASK</label>
+                <label>
+                  {historical ? "LAST REPORTED TASK" : "CURRENT TASK"}
+                </label>
                 <p className="task-copy">
                   {agent.task || "No task reported yet."}
                 </p>
-                <label>CURRENT TOOL</label>
+                <label>
+                  {historical ? "LAST REPORTED TOOL" : "CURRENT TOOL"}
+                </label>
                 <p className="tool-copy">
                   {agent.tool || "No active tool reported"}
                 </p>
@@ -724,7 +789,7 @@ export default function App() {
                       <div>
                         <dt>Roster</dt>
                         <dd>
-                          {agent.source.historical
+                          {historical
                             ? "Historical observation"
                             : "Current observation"}
                         </dd>

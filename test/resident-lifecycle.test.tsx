@@ -44,9 +44,11 @@ const setup = () => {
   };
 };
 describe("marker-driven rendered resident lifetimes", () => {
-  it("renders every initial state statically and never infers lifecycle from status", () => {
+  it("hides offline history without travel and renders current states statically", () => {
     const hook = setup();
-    for (const state of ["offline", "stale", "idle", "working"]) {
+    hook.update({ sessions: [session([agent("a", "offline")])] });
+    expect(hook.result.current.residents).toHaveLength(0);
+    for (const state of ["stale", "idle", "working", "done", "error"]) {
       hook.update({ sessions: [session([agent("a", state)])] });
       expect(hook.result.current.residents).toHaveLength(1);
       expect(hook.result.current.residents[0].transition).toBeUndefined();
@@ -107,7 +109,7 @@ describe("marker-driven rendered resident lifetimes", () => {
     });
     expect(hook.result.current.residents[0].transition).toBeUndefined();
   });
-  it("keeps stopped disposition through focus changes but resets on a new epoch", () => {
+  it("keeps stopped disposition through focus changes and transport epochs", () => {
     const hook = setup();
     hook.update({ events: [event("stop")] });
     hook.update({
@@ -116,6 +118,12 @@ describe("marker-driven rendered resident lifetimes", () => {
     hook.update({ sessions: [session()] });
     expect(hook.result.current.residents).toHaveLength(0);
     hook.update({ epoch: 2 });
+    expect(hook.result.current.residents).toHaveLength(0);
+    hook.update({ events: [event("start", "restart")] });
+    expect(hook.result.current.residents[0].transition?.direction).toBe(
+      "arriving",
+    );
+    hook.update({ epoch: 3 });
     expect(hook.result.current.residents[0].transition).toBeUndefined();
   });
   it("settles immediately when reduced motion is enabled and ignores stale callbacks after scope change", () => {
@@ -127,7 +135,11 @@ describe("marker-driven rendered resident lifetimes", () => {
     expect(hook.result.current.residents).toHaveLength(0);
     hook.update({ epoch: 2, reduced: false, events: [] });
     act(() => complete(resident.key, "1", "exiting"));
+    expect(hook.result.current.residents).toHaveLength(0);
+    hook.update({ events: [event("start", "restart")] });
+    act(() => complete(resident.key, "1", "exiting"));
     expect(hook.result.current.residents).toHaveLength(1);
+    expect(hook.result.current.residents[0].transition?.token).toBe("restart");
   });
   it("uses distinct stable queue slots for simultaneous starts and stops", () => {
     const hook = setup();

@@ -1,8 +1,13 @@
 import { useCallback, useState } from "react";
-import type { Agent, AgentLifecycleEvent, Session } from "./types";
+import type {
+  Agent,
+  AgentLifecycleEvent,
+  AgentLifecycleMarker,
+  Session,
+} from "./types";
 import { MAX_VISIBLE_DESKS } from "./world";
 import type { LifecycleDirection } from "./lifecycleWalking";
-import { residentIdentity } from "./projectProjection";
+import { isHistoricalAgent, residentIdentity } from "./projectProjection";
 
 export const MAX_RESIDENT_HISTORY = 512;
 
@@ -20,13 +25,65 @@ export type ResidentEntry = {
   transition?: ResidentTransition;
 };
 export function visibleAgents(session: Session, selected: string | null) {
-  const shown = session.agents.slice(0, MAX_VISIBLE_DESKS);
-  const chosen = session.agents.find((agent) => agent.id === selected);
+  const current = session.agents.filter(
+    (agent) => !isHistoricalAgent(session, agent),
+  );
+  const shown = current.slice(0, MAX_VISIBLE_DESKS);
+  const chosen = current.find((agent) => agent.id === selected);
   if (chosen && !shown.includes(chosen)) shown[MAX_VISIBLE_DESKS - 1] = chosen;
   return shown;
 }
 const keyFor = (session: string, agent: string) =>
   JSON.stringify([session, agent]);
+type StoppedResident = {
+  key: string;
+  marker: AgentLifecycleMarker;
+  previousStartId?: string;
+};
+/**
+ * Transport resets settle travel, not a resident's lifetime. A newer start
+ * snapshot can reopen a stopped lifetime without replaying its arrival; an
+ * old pre-stop start marker or an unmarked heartbeat cannot resurrect it.
+ */
+function reconcileStopped(
+  stopped: StoppedResident[],
+  sessions: Session[],
+): Map<string, StoppedResident> {
+  const hidden = new Map(stopped.map((entry) => [entry.key, entry]));
+  for (const session of sessions) {
+    for (const agent of session.agents) {
+      const marker = agent.lifecycle;
+      if (!marker) continue;
+      const key = residentIdentity(session.id, agent);
+      const previous = hidden.get(key);
+      if (marker.kind === "stop") {
+        if (
+          !previous ||
+          Date.parse(marker.at) >= Date.parse(previous.marker.at)
+        )
+          hidden.set(key, { ...previous, key, marker });
+      } else if (
+        previous &&
+        marker.eventId !== previous.previousStartId &&
+        Date.parse(marker.at) >= Date.parse(previous.marker.at)
+      )
+        hidden.delete(key);
+    }
+  }
+  return hidden;
+}
+function stoppedHistory(
+  hidden: Map<string, StoppedResident>,
+  relevant: Set<string>,
+): StoppedResident[] {
+  const entries = [...hidden.values()];
+  const retained = entries.filter((entry) => relevant.has(entry.key));
+  const room = Math.max(0, MAX_RESIDENT_HISTORY - retained.length);
+  const recent = room
+    ? entries.filter((entry) => !relevant.has(entry.key)).slice(-room)
+    : [];
+  return [...retained, ...recent].slice(-MAX_RESIDENT_HISTORY);
+}
 function roster(sessions: Session[], selected: string | null): ResidentEntry[] {
   return sessions.flatMap((session) =>
     visibleAgents(session, selected).map((agent, deskIndex) => ({
@@ -40,9 +97,9 @@ function roster(sessions: Session[], selected: string | null): ResidentEntry[] {
 type State = {
   scope: string;
   resetScope: string;
+  enabled: boolean;
   roomIds: string[];
-  baseline: string;
-  hidden: string[];
+  hidden: StoppedResident[];
   signature: string;
   eventSignature: string;
   entries: ResidentEntry[];
@@ -74,7 +131,12 @@ export function useResidentLifecycle({
   // Retained departures may be outside the visible window and must still
   // receive fresh status/task/provenance updates on subsequent snapshots.
   const signature = JSON.stringify([
-    sessions.map((session) => [session.id, session.agents]),
+    sessions.map((session) => [
+      session.id,
+      session.connectionState,
+      session.connected,
+      session.agents,
+    ]),
     events,
     // Selection changes the six-desk window, not the lifetime of every actor.
     // In particular, historical priority can move the unchanged selection
@@ -82,24 +144,30 @@ export function useResidentLifecycle({
     selected,
   ]);
   const eventSignature = JSON.stringify(events.map((event) => event.eventId));
-  const baseline = JSON.stringify([epoch, enabled, connection]);
-  const fresh = (hidden: string[] = []): State => ({
-    scope,
-    resetScope,
-    roomIds,
-    baseline,
-    eventSignature,
-    hidden,
-    signature,
-    entries: current.filter((entry) => !hidden.includes(entry.key)),
-    seen: events.map((event) => event.eventId).slice(-MAX_RESIDENT_HISTORY),
-  });
+  const fresh = (stopped: StoppedResident[] = []): State => {
+    const hidden = reconcileStopped(stopped, sessions);
+    return {
+      scope,
+      resetScope,
+      enabled,
+      roomIds,
+      eventSignature,
+      hidden: stoppedHistory(
+        hidden,
+        new Set(current.map((entry) => entry.key)),
+      ),
+      signature,
+      entries: current.filter((entry) => !hidden.has(entry.key)),
+      seen: events.map((event) => event.eventId).slice(-MAX_RESIDENT_HISTORY),
+    };
+  };
   const [stored, setStored] = useState<State>(() => fresh());
   let state = stored;
   if (stored.resetScope !== resetScope) {
-    // Accessibility changes keep stopped residents absent. A fresh transport
-    // epoch is an ordinary authoritative baseline.
-    state = fresh(stored.baseline === baseline ? stored.hidden : []);
+    // Reconnect/accessibility baselines cancel travel and keep confirmed stops
+    // absent. Live/demo switches are separate observation namespaces, so a
+    // coincidentally matching sample identity must not inherit a live stop.
+    state = fresh(stored.enabled === enabled ? stored.hidden : []);
     setStored(state);
   } else if (stored.scope !== scope || stored.signature !== signature) {
     // The centered grid changes when the room count or slot changes. Never
@@ -141,11 +209,16 @@ export function useResidentLifecycle({
         }
       }
     }
-    const hidden = new Set(stored.hidden);
+    const hidden = reconcileStopped(stored.hidden, sessions);
     for (const [key, event] of latest) {
       if (event.kind === "stop") {
+        const old = previousEntries.find((entry) => entry.key === key);
+        const previousStartId =
+          old?.agent.lifecycle?.kind === "start"
+            ? old.agent.lifecycle.eventId
+            : hidden.get(key)?.previousStartId;
         hidden.delete(key);
-        hidden.add(key);
+        hidden.set(key, { key, marker: event, previousStartId });
       } else hidden.delete(key);
     }
     const previous = new Map(
@@ -195,7 +268,8 @@ export function useResidentLifecycle({
           });
       } else if (
         old.transition?.direction === "exiting" &&
-        event?.kind !== "start"
+        event?.kind !== "start" &&
+        hidden.has(old.key)
       ) {
         if (!reduced)
           entries.push({ ...old, agent: observed.get(old.key) ?? old.agent });
@@ -272,22 +346,14 @@ export function useResidentLifecycle({
     const relevant = new Set(
       [...current, ...entries].map((entry) => entry.key),
     );
-    const retainedHidden = [...hidden].filter((key) => relevant.has(key));
-    const historyRoom = Math.max(
-      0,
-      MAX_RESIDENT_HISTORY - retainedHidden.length,
-    );
-    const recentHidden = historyRoom
-      ? [...hidden].filter((key) => !relevant.has(key)).slice(-historyRoom)
-      : [];
     state = {
       scope,
       resetScope,
+      enabled,
       roomIds,
-      baseline,
       signature,
       eventSignature,
-      hidden: [...retainedHidden, ...recentHidden].slice(-MAX_RESIDENT_HISTORY),
+      hidden: stoppedHistory(hidden, relevant),
       entries: entries.slice(0, capacity),
       seen: [
         ...stored.seen,

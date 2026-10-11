@@ -505,7 +505,8 @@ describe("independent live Office flicker runtime review", () => {
   });
 
   it("does not replay legacy lifecycle markers or markers received across an actual reconnect", async () => {
-    await publish(snapshot());
+    const companion = session("companion");
+    await publish(snapshot([session(), companion]));
     await tick(15);
     const legacy = {
       ...session(),
@@ -513,15 +514,16 @@ describe("independent live Office flicker runtime review", () => {
         { ...session().agents[0], lifecycle: marker("legacy-stop", "stop") },
       ],
     };
-    await publish(snapshot([legacy]));
+    await publish(snapshot([legacy, companion]));
     await tick(1);
     expect(latest.lifecycleEvents).toEqual([]);
-    expect(actor()!.userData.lifecycle).toBeNull();
-    await publish(snapshot([legacy], 1));
+    expect(actor()).toBeUndefined();
+    expect(actor("companion")!.userData.lifecycle).toBeNull();
+    await publish(snapshot([legacy, companion], 1));
     await tick(1);
     expect(latest.lifecycleEvents).toEqual([]);
     const beforeReconnect = latest.lifecycleEpoch;
-    const original = actor()!;
+    const original = actor("companion")!;
     const body = original.getObjectByName("Body")!;
     const action = actionFor(original);
     const mixer = action.getMixer();
@@ -530,18 +532,19 @@ describe("independent live Office flicker runtime review", () => {
     await act(async () => {
       FakeEvents.current.onerror?.();
       FakeEvents.current.onopen?.();
-      FakeEvents.current.publish(snapshot([legacy], 2));
+      FakeEvents.current.publish(snapshot([legacy, companion], 2));
     });
     await tick(1);
     expect(latest.lifecycleEpoch).toBeGreaterThan(beforeReconnect);
-    expect(actor()?.uuid).toBe(original.uuid);
-    expect(actor()!.getObjectByName("Body")?.uuid).toBe(body.uuid);
+    expect(actor()).toBeUndefined();
+    expect(actor("companion")?.uuid).toBe(original.uuid);
+    expect(actor("companion")!.getObjectByName("Body")?.uuid).toBe(body.uuid);
     expect(actionFor(original).getMixer()).toBe(mixer);
     expect(action.time).not.toBe(phase);
     expect(resets.mock.calls.length).toBe(resetCount);
     expect(latest.lifecycleEvents).toEqual([]);
-    expect(actor()!.visible).toBe(true);
-    expect(actor()!.userData.lifecycle).toBeNull();
+    expect(actor("companion")!.visible).toBe(true);
+    expect(actor("companion")!.userData.lifecycle).toBeNull();
   });
 });
 
