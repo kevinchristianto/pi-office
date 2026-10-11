@@ -7,7 +7,17 @@ import {
   type GLTF,
 } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { createRoot, extend, _roots } from "@react-three/fiber";
-import { createRoomLayout } from "../src/world";
+import {
+  createRoomLayout,
+  createOfficeLayout,
+  routeLength,
+} from "../src/world";
+import {
+  createBuildingEntryRoute,
+  LIFECYCLE_WALK_SPEED,
+} from "../src/lifecycleRoutes";
+import { LIFECYCLE_CORRIDOR_KEY } from "../src/lifecycleWalking";
+import { WALK_GAIT_RATE, WALK_SPEED, WALK_TURN_SPEED } from "../src/motion";
 import {
   residentModel,
   residentVariant,
@@ -32,7 +42,7 @@ vi.mock("@react-three/drei", () => ({
   PerspectiveCamera: () => null,
 }));
 vi.mock("../src/AgentBubble", () => ({ default: () => null }));
-import { Character } from "../src/Office";
+import { Asset, Character } from "../src/Office";
 
 type Props = React.ComponentProps<typeof Character>;
 let root: ReturnType<typeof createRoot>;
@@ -81,6 +91,22 @@ function palette() {
     }
   });
   return colors;
+}
+function resident() {
+  return _roots
+    .get(canvas)!
+    .store.getState()
+    .scene.getObjectByName(`resident-${props.agent.id}`)!;
+}
+function lifecycleProps(direction: "arriving" | "exiting", token = "trip") {
+  const room = createOfficeLayout([{ id: props.roomId, agentCount: 6 }])[0];
+  const desk = room.desks[0];
+  const route = createBuildingEntryRoute([room], room, desk);
+  return {
+    desk,
+    lifecycleRoute: route,
+    transition: { direction, token, queueIndex: 0 },
+  };
 }
 async function expectMoving() {
   await tick(30);
@@ -310,4 +336,360 @@ describe("real character animation runtime", () => {
       expect(pose().every(Number.isFinite)).toBe(true);
     });
   }
+  it("faces each opposite desk direction while preserving the original rig and materials", async () => {
+    const original = body();
+    const originalPalette = palette();
+    const room = createOfficeLayout([{ id: props.roomId, agentCount: 6 }])[0];
+    for (const index of [0, 3, 1, 4, 0]) {
+      props = { ...props, desk: room.desks[index] };
+      await render();
+      await tick(20);
+      expect(
+        Math.sin((resident().rotation.y - props.desk.orientation) / 2),
+      ).toBeCloseTo(0);
+      expect(body().uuid).toBe(original.uuid);
+      expect(palette()).toEqual(originalPalette);
+      expect(resident().position.toArray()).toEqual([
+        props.desk.seat[0],
+        RESIDENT_SEATED_Y,
+        props.desk.seat[1],
+      ]);
+    }
+  });
+
+  it("walks in at full scale with the real GLB walk clip, then sits and works", async () => {
+    const complete = vi.fn();
+    props = {
+      ...props,
+      ...lifecycleProps("arriving"),
+      onLifecycleComplete: complete,
+    };
+    await render();
+    expect(resident().visible).toBe(false);
+    await tick(40);
+    expect(resident().visible).toBe(true);
+    expect(resident().scale.toArray()).toEqual([1, 1, 1]);
+    expect(resident().userData.lifecycle.phase).toBe("walking");
+    expect(body().position.y).toBeGreaterThan(0.75);
+    const before = pose();
+    await tick(17);
+    expect(pose()).not.toEqual(before);
+    expect(complete).not.toHaveBeenCalled();
+    await tick(
+      Math.ceil(
+        (routeLength(props.lifecycleRoute!) / LIFECYCLE_WALK_SPEED) * 60,
+      ) + 30,
+    );
+    expect(complete).toHaveBeenCalledExactlyOnceWith("trip", "arriving");
+    expect(
+      resident().position.distanceTo(
+        new THREE.Vector3(
+          props.desk.seat[0],
+          RESIDENT_SEATED_Y,
+          props.desk.seat[1],
+        ),
+      ),
+    ).toBeLessThan(1e-8);
+    expect(body().position.y).toBeLessThan(0.65);
+    props = { ...props, transition: undefined, lifecycleRoute: undefined };
+    await render();
+    await expectMoving();
+    expect(
+      Math.sin((resident().rotation.y - props.desk.orientation) / 2),
+    ).toBeCloseTo(0);
+  });
+
+  it("stands, walks the full departure, then hides only outside, without scaling", async () => {
+    const complete = vi.fn();
+    props = {
+      ...props,
+      ...lifecycleProps("exiting"),
+      onLifecycleComplete: complete,
+    };
+    await render();
+    await tick(1);
+    expect(resident().userData.lifecycle.phase).toBe("standing");
+    expect(resident().position.x).toBeCloseTo(props.desk.seat[0]);
+    await tick(40);
+    expect(resident().userData.lifecycle.phase).toBe("walking");
+    expect(resident().visible).toBe(true);
+    expect(resident().scale.toArray()).toEqual([1, 1, 1]);
+    expect(complete).not.toHaveBeenCalled();
+    await tick(
+      Math.ceil(
+        (routeLength(props.lifecycleRoute!) / LIFECYCLE_WALK_SPEED) * 60,
+      ) + 60,
+    );
+    expect(complete).toHaveBeenCalledExactlyOnceWith("trip", "exiting");
+    expect(resident().visible).toBe(false);
+    expect(resident().position.x).toBe(props.lifecycleRoute![0][0]);
+    expect(resident().position.z).toBe(props.lifecycleRoute![0][1]);
+    expect(props.positions.current.has(props.agent.id)).toBe(false);
+    expect(props.reservations.current.size).toBe(0);
+  });
+
+  it("reverses an interrupted departure in place and ignores the obsolete completion", async () => {
+    const complete = vi.fn();
+    props = {
+      ...props,
+      ...lifecycleProps("exiting", "stop"),
+      onLifecycleComplete: complete,
+    };
+    await render();
+    await tick(100);
+    const position = resident().position.clone();
+    props = {
+      ...props,
+      transition: {
+        ...props.transition!,
+        direction: "arriving",
+        token: "restart",
+      },
+    };
+    await render();
+    await tick(1);
+    expect(resident().position.distanceTo(position)).toBeLessThanOrEqual(
+      WALK_SPEED / 60 + 1e-10,
+    );
+    await tick(140);
+    expect(complete).toHaveBeenCalledExactlyOnceWith("restart", "arriving");
+    expect(resident().visible).toBe(true);
+    expect(resident().position.x).toBeCloseTo(props.desk.seat[0]);
+  });
+
+  it("freezes the active route across unrelated route-prop replacements", async () => {
+    const complete = vi.fn();
+    props = {
+      ...props,
+      ...lifecycleProps("arriving"),
+      onLifecycleComplete: complete,
+    };
+    await render();
+    await tick(60);
+    const before = resident().position.clone();
+    const originalEnd = props.lifecycleRoute!.at(-1)!;
+    props = {
+      ...props,
+      lifecycleRoute: props.lifecycleRoute!.map(([x, z]) => [x + 50, z + 50]),
+    };
+    await render();
+    await tick(1);
+    expect(resident().position.distanceTo(before)).toBeLessThanOrEqual(
+      WALK_SPEED / 60 + 1e-10,
+    );
+    await tick(2000);
+    expect(resident().position.x).toBeCloseTo(originalEnd[0]);
+    expect(resident().position.z).toBeCloseTo(originalEnd[1]);
+    expect(complete).toHaveBeenCalledExactlyOnceWith("trip", "arriving");
+  });
+
+  it("consumes in-flight cosmetic commands without replaying them after arrival", async () => {
+    props = { ...props, ...lifecycleProps("arriving") };
+    await render();
+    await tick(20);
+    props = {
+      ...props,
+      command: { id: props.agent.id, type: "walk", serial: 101 },
+    };
+    await render();
+    await tick(2000);
+    props = { ...props, transition: undefined, lifecycleRoute: undefined };
+    await render();
+    await tick(180);
+    expect(
+      resident().position.distanceTo(
+        new THREE.Vector3(
+          props.desk.seat[0],
+          RESIDENT_SEATED_Y,
+          props.desk.seat[1],
+        ),
+      ),
+    ).toBeLessThan(1e-8);
+    expect(props.reservations.current.size).toBe(0);
+  });
+
+  it("keeps waiting arrivals offsite and releases shared traffic when their actor unmounts", async () => {
+    props.reservations.current.set(LIFECYCLE_CORRIDOR_KEY, "other");
+    props = { ...props, ...lifecycleProps("arriving") };
+    await render();
+    await tick(120);
+    expect(resident().visible).toBe(false);
+    expect(resident().userData.lifecycle.distance).toBe(0);
+    expect(props.positions.current.has(props.agent.id)).toBe(false);
+    props.reservations.current.delete(LIFECYCLE_CORRIDOR_KEY);
+    await tick(1);
+    expect(resident().visible).toBe(true);
+    expect(props.reservations.current.get(LIFECYCLE_CORRIDOR_KEY)).toBe(
+      JSON.stringify([props.roomId, props.agent.id]),
+    );
+    await act(async () => root.render(<group />));
+    expect(props.reservations.current.size).toBe(0);
+  });
+
+  it("settles reduced-motion arrivals without an outdoor seated ghost", async () => {
+    const complete = vi.fn();
+    props = {
+      ...props,
+      ...lifecycleProps("arriving"),
+      onLifecycleComplete: complete,
+    };
+    await render();
+    await tick(30);
+    await act(async () => {
+      reduced = true;
+      listeners.forEach((listener) => listener());
+    });
+    await tick(1);
+    expect(complete).toHaveBeenCalledExactlyOnceWith("trip", "arriving");
+    expect(
+      resident().position.distanceTo(
+        new THREE.Vector3(
+          props.desk.seat[0],
+          RESIDENT_SEATED_Y,
+          props.desk.seat[1],
+        ),
+      ),
+    ).toBeLessThan(1e-8);
+    expect(props.reservations.current.size).toBe(0);
+  });
+
+  it("advances real GLB Walk time 1.5x while actual R3F translation moves at the shared brisk speed", async () => {
+    const played = vi.spyOn(THREE.AnimationAction.prototype, "play");
+    props = { ...props, ...lifecycleProps("arriving") };
+    await render();
+    await tick(1);
+    const walk = played.mock.instances.find(
+      (action) => action.getClip().name.toLowerCase() === "walk",
+    )!;
+    expect(walk).toBeDefined();
+    expect(walk.getEffectiveTimeScale()).toBe(WALK_GAIT_RATE);
+    const initialDistance = resident().userData.lifecycle.distance;
+    const initialTime = walk.time;
+    await tick(12);
+    expect(
+      resident().userData.lifecycle.distance - initialDistance,
+    ).toBeCloseTo(WALK_SPEED * 0.2);
+    expect(walk.time - initialTime).toBeCloseTo(WALK_GAIT_RATE * 0.2);
+    expect(body().position.y).toBeGreaterThan(0.75);
+    expect(resident().scale.toArray()).toEqual([1, 1, 1]);
+  });
+
+  it("uses the same brisk real-GLB gait for an ordinary stroll without speeding up work", async () => {
+    const played = vi.spyOn(THREE.AnimationAction.prototype, "play");
+    props = {
+      ...props,
+      command: { id: props.agent.id, type: "walk", serial: 401 },
+    };
+    await render();
+    await tick(1);
+    const walk = played.mock.instances.find(
+      (action) => action.getClip().name.toLowerCase() === "walk",
+    )!;
+    expect(walk.getEffectiveTimeScale()).toBe(WALK_GAIT_RATE);
+    const start = resident().position.clone();
+    const initialTime = walk.time;
+    await tick(6);
+    // This short prefix stays on the first clear straight part of the route.
+    expect(resident().position.distanceTo(start)).toBeCloseTo(
+      WALK_SPEED * 0.1,
+      2,
+    );
+    expect(walk.time - initialTime).toBeCloseTo(WALK_GAIT_RATE * 0.1);
+    props = {
+      ...props,
+      command: { id: props.agent.id, type: "return", serial: 402 },
+    };
+    await render();
+    const turningPosition = resident().position.clone();
+    let turningYaw = resident().rotation.y;
+    for (let frame = 0; frame < 29; frame++) {
+      await tick(1);
+      expect(resident().position.toArray()).toEqual(turningPosition.toArray());
+      expect(Math.abs(resident().rotation.y - turningYaw)).toBeLessThanOrEqual(
+        WALK_TURN_SPEED / 60 + 1e-9,
+      );
+      turningYaw = resident().rotation.y;
+    }
+    await tick(120);
+    const work = played.mock.instances.find(
+      (action) => action.getClip().name.toLowerCase() === "work",
+    )!;
+    expect(work).toBeDefined();
+    expect(work.getEffectiveTimeScale()).toBe(1);
+  });
+
+  it("bounds actual heading at every arrival, seating, standing, route turn, and restart frame", async () => {
+    props = { ...props, ...lifecycleProps("arriving") };
+    await render();
+    await tick(1); // The hidden offsite actor can initialize its facing.
+    const originalScale = resident().scale.toArray();
+    let previousYaw = resident().rotation.y;
+    const checkFrames = async (count: number) => {
+      for (let frame = 0; frame < count; frame++) {
+        await tick(1);
+        const heading = resident().rotation.y;
+        expect(Math.abs(heading - previousYaw)).toBeLessThanOrEqual(
+          WALK_TURN_SPEED / 60 + 1e-9,
+        );
+        expect(resident().scale.toArray()).toEqual(originalScale);
+        previousYaw = heading;
+      }
+    };
+    await checkFrames(
+      Math.ceil((routeLength(props.lifecycleRoute!) / WALK_SPEED) * 60) + 30,
+    );
+    expect(
+      Math.sin((resident().rotation.y - props.desk.orientation) / 2),
+    ).toBeCloseTo(0);
+    props = { ...props, ...lifecycleProps("exiting", "depart") };
+    await render();
+    await checkFrames(80);
+    const beforeReversal = resident().rotation.y;
+    props = {
+      ...props,
+      transition: {
+        ...props.transition!,
+        direction: "arriving",
+        token: "restart",
+      },
+    };
+    await render();
+    await checkFrames(1);
+    expect(
+      Math.abs(resident().rotation.y - beforeReversal),
+    ).toBeLessThanOrEqual(WALK_TURN_SPEED / 60 + 1e-9);
+    await checkFrames(150);
+    props = { ...props, transition: undefined, lifecycleRoute: undefined };
+    await render();
+    await checkFrames(3);
+  });
+
+  it("disposes merged Asset buffers on unmount while preserving cached source geometry", async () => {
+    const bytes = fs.readFileSync("public/models/desk.glb");
+    const source = await new GLTFLoader().parseAsync(
+      Uint8Array.from(bytes).buffer,
+      "",
+    );
+    asset.current = source;
+    const originals: ReturnType<typeof vi.spyOn>[] = [];
+    source.scene.traverse((node) => {
+      if (node instanceof THREE.Mesh)
+        originals.push(vi.spyOn(node.geometry, "dispose"));
+    });
+    await act(async () =>
+      root.render(<Asset name="desk" position={[0, 0, 0]} />),
+    );
+    const merged: ReturnType<typeof vi.spyOn>[] = [];
+    _roots
+      .get(canvas)!
+      .store.getState()
+      .scene.traverse((node) => {
+        if (node instanceof THREE.Mesh)
+          merged.push(vi.spyOn(node.geometry, "dispose"));
+      });
+    expect(merged.length).toBeGreaterThan(0);
+    await act(async () => root.render(<group />));
+    merged.forEach((dispose) => expect(dispose).toHaveBeenCalled());
+    originals.forEach((dispose) => expect(dispose).not.toHaveBeenCalled());
+  });
 });

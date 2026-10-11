@@ -1,10 +1,10 @@
 # Pi Office
 
-A full-window, local 3D office for your Pi coding agents. Each participating session gets an airy cubicle section. Original modeled furniture and articulated residents bring the office to life; live state, task, current tool, model, reported usage and activity remain available when you select an agent.
+A full-window, local 3D office for your Pi coding agents. Sessions working in the same project share one cubicle section. Original modeled furniture and articulated residents bring the office to life; live state, task, current tool, model, reported usage and activity remain available when you select an agent.
 
-**View-only MVP. Native Windows runtime. No cloud account, telemetry, external fonts or remote assets.** The initial view is live and empty until you connect a session. Demo mode is explicitly labeled sample data and never mixed with live data.
+**View-only local workplace. Native Windows runtime. No cloud account, telemetry, external fonts or remote assets.** The initial view is live and empty until you connect a session. Demo mode is explicitly labeled sample data and never mixed with live data.
 
-Existing installation? See [UPDATING.md](UPDATING.md) to preserve your token and extension path while applying the 0.4.0 resident and navigation update.
+Existing installation? See [UPDATING.md](UPDATING.md) to preserve your token and extension path while applying the 0.5.0 workplace update.
 
 ## Windows quick start
 
@@ -49,6 +49,34 @@ Press Ctrl+C in the bridge PowerShell window. Pi continues normally. Restart wit
 
 Before starting the bridge, run `$env:PI_OFFICE_PORT = '4318'`, then `npm start`. Open the URL printed by the bridge and set `PI_OFFICE_URL` to that URL in all Pi shells. Only plain HTTP on `127.0.0.1` or `localhost` is accepted. Do not expose the port through a tunnel or reverse proxy.
 
+## Shared workplace 0.5.0
+
+Project departments use a compact centered grid with opposite-facing cubicle pairs. Corporate carpet, glazing, metal trims and task lights replace the home-office treatment. Reception, a project room, coffee/print counter and operations board provide shared facilities.
+
+Click facility signs or the keyboard-accessible Workplace button for the directory, project briefs/focus, actual activity and attention states, or visual resident interactions. Facilities open data panels; they do not submit real tasks or pretend agents attended meetings.
+
+### One project, one office section
+
+The observer identifies the canonical Git **worktree root**, so sessions started in different subdirectories of one worktree share an office. Distinct worktrees and separate clones stay separate, even when their folder names match. Outside Git, the canonical working directory is the project boundary. Missing or unresolved paths stay session-isolated rather than being guessed from a name.
+
+This is a display grouping only. Every Pi session and agent retains its original transport identity, state, activity and lifecycle history. The combined roster prioritizes live members; older offline sessions remain inspectable without creating another office or pushing live members out of the desk window. Inspection retains the selected agent’s source session and working directory. Actual Pi work remains view-only.
+
+Reload the updated observer in each participating Pi session when its work is idle to obtain resolved project roots. Older observers can group exact absolute working-directory paths; they cannot reliably identify Git roots, filesystem aliases or parent/child relationships. An exact legacy root may join an unambiguous resolved project, but arbitrary nested paths are not guessed.
+
+### Walking arrivals and departures
+
+Supported explicit starts bring a resident through the marked building entrance and clear corridors to their desk. Confirmed stops stand the resident up and walk them outside before removal. Residents remain full size; there is no desk fade or scale pop. A short authored standing/seated pose crossfade handles the chair transition. Collision-aware visibility paths take direct lines through clear space and curve safely around furniture instead of following a fixed right-angle aisle tour. Walking is brisk at 1.8 scene units/second, with proportionally faster foot cycles; turns are bounded and a reversal briefly turns in place. This applies to ordinary visual strolls as well as arrivals/departures. Shared traffic and desk-aisle reservations prevent competing walkers from using the same corridor. Routes remain within the destination department and shared circulation, with full body clearance from furniture, glazing and floor edges.
+
+Task turns, initial snapshots, reconnects, reload/resume, fleet disappearance and stale/offline status never fabricate a start or stop. Root startup/new/fork and quit, and compatible identified non-fleet child started/stopped hints are the supported sources. Unknown or older event contracts keep ordinary static/state visuals. A final quit observation remains best-effort if Pi exits before delivery.
+
+Reduced motion settles locations immediately. Focus/project changes, removal of an entire viewed project and transport resets cancel travel and establish a new static view rather than replaying entry events. An individual departing resident remains until reaching the exit, even if removed from its project roster. Real Pi work is always independent of cosmetic movement.
+
+### Reliability and verification
+
+The interface loads separately from the heavy 3D scene. Architecture is material-batched, and owned furniture buffers are released on unmount. The bridge has bounded shutdown/upload handling, SSE limits/backpressure and credential/static-path safeguards. It remains loopback-only, with no telemetry or agent-control endpoint.
+
+See [TESTING.md](TESTING.md) for current checks and exact limitations. Blender renders are visualizations of source geometry/animation, not browser screenshots or recordings of real Pi events. Browser GPU/input performance and native Windows/Pi operation still require validation on the intended machine.
+
 ## Using the office
 
 - The scene fills the window. Agent rosters and details start closed.
@@ -58,10 +86,10 @@ Before starting the bridge, run `$env:PI_OFFICE_PORT = '4318'`, then `npm start`
 - Focus frames a selected resident once; Follow tracks them until you take control. Dragging, scrolling, keyboard navigation, Escape, or Reset camera cancels tracking.
 - Drag to orbit, scroll to zoom, right-drag to pan. Focus the office canvas to use WASD/arrow keys; the help button lists keyboard and touch controls. Camera movement stays within the office. Fullscreen is optional.
 - Eight original adult resident models have distinct facial structure, hair, skin tones, stature and outfits. Appearance is assigned from agent ID, so selecting, reordering, switching rooms or changing task/state never rerolls it. These are visual identities, unrelated to roles or real people.
-- The styled project selector focuses a session or shows the first four sections. Each section shows up to six desks for performance. Every retained agent remains accessible in the roster; selecting an overflow agent brings its desk into view.
+- The styled project selector focuses a project or shows the first four sections, prioritizing projects with live sessions. Each section shows up to six desks for performance. Every retained agent remains accessible in the roster; selecting an overflow agent brings its desk into view.
 - Work types; thinking, waiting, idle, error, completion and offline states have distinct restrained poses. Completion reacts once and settles. These reflect reported state, not an inferred task result.
 - OS reduced-motion preference freezes ambient/state gestures. Requested moves change location without an animated traverse, and camera following moves without easing.
-- Low 1.15 m partitions define roomy open-front cubicles. Clear row and side aisles exceed 1.2 m; routes are tested against tables, chairs and every partition.
+- Low 1.15 m partitions define facing workstation pairs. Swept route tests cover tables, chairs, panels, corporate fixtures and the marked entrance/corridors. Normal visual strolls stay inside each department; lifecycle travel uses the shared entrance.
 - Live is the default. Explore demo uses clearly labeled sample agents; demo values never mix with actual sessions.
 - Activity bubbles stay a fixed screen size: state/tool/task nearby, a compact marker in the overview, and hidden at far distances. Hover or keyboard-focus one for task, tool, model and observation freshness. Click/tap selects the agent; Escape or an outside click dismisses the hover details.
 

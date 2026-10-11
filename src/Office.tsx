@@ -8,21 +8,56 @@ import {
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
-import type { Agent, Session } from "./types";
+import type { Agent, AgentLifecycleEvent, Session } from "./types";
+import { projectRosterSummary } from "./projectProjection";
 import {
-  createRoomLayout,
+  createOfficeLayout,
+  buildingLayoutBounds,
+  createFacilityLayout,
   routeLength,
-  sampleRoute,
-  MAX_VISIBLE_DESKS,
   type DeskLayout,
   type RoomLayout,
+  type Route,
 } from "./world";
 import AgentBubble from "./AgentBubble";
+import BuildingEntrance from "./BuildingEntrance";
+import {
+  useResidentLifecycle,
+  type ResidentEntry,
+  type ResidentTransition,
+} from "./useResidentLifecycle";
+import {
+  createBuildingEntryRoute,
+  LIFECYCLE_WALK_SPEED,
+  sampleLifecycleRoutePose,
+} from "./lifecycleRoutes";
+import {
+  consumeVisualCommand,
+  createLifecycleWalk,
+  reverseLifecycleWalk,
+  releaseLifecycleWalk,
+  stepLifecycleWalk,
+  type LifecycleWalk,
+  type LifecycleDirection,
+} from "./lifecycleWalking";
 import { bubbleMode, presentation } from "./agentPresentation";
 import { useReducedMotion } from "./useReducedMotion";
+import {
+  createRoomDecor,
+  createAmenityDecor,
+  type OfficeSolid,
+} from "./officeDecor";
+import type { WorkplaceFacility } from "./WorkplacePanel";
 import { stateColor } from "./state";
-import { mergeStaticModel } from "./models";
-import { createMotion, requestMotion, stepMotion } from "./motion";
+import { mergeStaticModel, buildSolidModel } from "./models";
+import {
+  animationPlaybackRate,
+  createMotion,
+  motionFrameDelta,
+  requestMotion,
+  stepHeading,
+  stepMotion,
+} from "./motion";
 import type { CameraAction } from "./camera";
 import CameraRig from "./CameraRig";
 import {
@@ -55,7 +90,146 @@ function Solid({
     </mesh>
   );
 }
-function Asset({
+function Decor({ solids }: { solids: OfficeSolid[] }) {
+  const signature = JSON.stringify(solids);
+  const object = useMemo(() => buildSolidModel(solids), [signature]);
+  useEffect(
+    () => () => {
+      const materials = new Set<THREE.Material>();
+      object.traverse((node) => {
+        if (node instanceof THREE.Mesh) {
+          node.geometry.dispose();
+          for (const material of Array.isArray(node.material)
+            ? node.material
+            : [node.material])
+            materials.add(material);
+        }
+      });
+      materials.forEach((material) => material.dispose());
+    },
+    [object],
+  );
+  return <primitive object={object} />;
+}
+function SharedWorkplace({
+  count,
+  onFacility,
+}: {
+  count: number;
+  onFacility: (facility: WorkplaceFacility) => void;
+}) {
+  const facilities = createFacilityLayout(count);
+  const centers = {
+    meeting: facilities.zones.meeting.center,
+    reception: facilities.zones.reception.center,
+    breakroom: facilities.zones.pantry.center,
+    operations: facilities.zones.print.center,
+  };
+  const solids = createAmenityDecor(centers);
+  const labels: Record<WorkplaceFacility, string> = {
+    reception: "Reception",
+    meeting: "Project room",
+    operations: "Operations",
+    breakroom: "Break & print",
+  };
+  return (
+    <group>
+      <Solid
+        position={[
+          (facilities.bounds.minX + facilities.bounds.maxX) / 2,
+          -0.01,
+          (facilities.bounds.minZ + facilities.bounds.maxZ) / 2,
+        ]}
+        size={[
+          facilities.bounds.maxX - facilities.bounds.minX,
+          0.06,
+          facilities.bounds.maxZ - facilities.bounds.minZ,
+        ]}
+        color="#c3ccd0"
+      />
+      <Solid
+        position={[0, 0.031, facilities.circulation[0][1]]}
+        size={[
+          facilities.bounds.maxX - facilities.bounds.minX - 1.2,
+          0.008,
+          0.08,
+        ]}
+        color="#4b7685"
+      />
+      <Decor solids={solids} />
+      {[-0.7, 0.7].flatMap((dx) =>
+        [-1, 1].map((side) => (
+          <Asset
+            key={`${dx}-${side}`}
+            name="chair"
+            position={[
+              centers.meeting[0] + dx,
+              0.04,
+              centers.meeting[1] + side * 0.8,
+            ]}
+            rotation={side === 1 ? 0 : Math.PI}
+          />
+        )),
+      )}
+      <Asset
+        name="chair"
+        position={[
+          centers.reception[0] + 0.5,
+          0.04,
+          centers.reception[1] - 0.8,
+        ]}
+        rotation={Math.PI}
+      />
+      <Asset
+        name="plant"
+        position={[
+          facilities.bounds.minX + 0.4,
+          0.04,
+          facilities.bounds.maxZ - 0.5,
+        ]}
+        scale={1.1}
+      />
+      <Asset
+        name="plant"
+        position={[
+          facilities.bounds.maxX - 0.4,
+          0.04,
+          facilities.bounds.maxZ - 0.5,
+        ]}
+        scale={1.1}
+      />
+      {(Object.entries(centers) as [WorkplaceFacility, [number, number]][]).map(
+        ([kind, point]) => (
+          <Html
+            key={kind}
+            center
+            position={[point[0], kind === "operations" ? 2.7 : 2.15, point[1]]}
+            zIndexRange={[8, 0]}
+          >
+            <button
+              className="facility-label"
+              aria-label={`Open ${labels[kind]}`}
+              onClick={() => onFacility(kind)}
+            >
+              <span>
+                {kind === "reception"
+                  ? "π"
+                  : kind === "meeting"
+                    ? "01"
+                    : kind === "operations"
+                      ? "02"
+                      : "03"}
+              </span>
+              {labels[kind]}
+              <small>Open</small>
+            </button>
+          </Html>
+        ),
+      )}
+    </group>
+  );
+}
+export function Asset({
   name,
   position,
   rotation = 0,
@@ -68,6 +242,14 @@ function Asset({
 }) {
   const { scene } = useGLTF(`/models/${name}.glb`);
   const object = useMemo(() => mergeStaticModel(clone(scene)), [scene]);
+  useEffect(
+    () => () => {
+      object.traverse((node) => {
+        if (node instanceof THREE.Mesh) node.geometry.dispose();
+      });
+    },
+    [object],
+  );
   return (
     <primitive
       object={object}
@@ -87,6 +269,9 @@ export function Character({
   positions,
   reservations,
   index,
+  transition,
+  lifecycleRoute,
+  onLifecycleComplete,
 }: {
   agent: Agent;
   desk: DeskLayout;
@@ -97,9 +282,15 @@ export function Character({
   positions: Registry;
   reservations: React.MutableRefObject<Map<string, string>>;
   index: number;
+  transition?: ResidentTransition;
+  lifecycleRoute?: Route;
+  onLifecycleComplete?: (token: string, direction: LifecycleDirection) => void;
 }) {
-  const { scene, animations } = useGLTF(residentModel(agent.id));
+  const { scene, animations } = useGLTF(
+    residentModel(agent.source?.agentId ?? agent.id),
+  );
   const group = useRef<THREE.Group>(null);
+  const trafficId = JSON.stringify([roomId, agent.id]);
   const rig = useMemo(() => {
     const model = clone(scene);
     model.traverse((n) => {
@@ -118,7 +309,9 @@ export function Character({
       Object.fromEntries(
         animations.map((clip) => [
           clip.name.toLowerCase(),
-          mixer.clipAction(clip),
+          mixer
+            .clipAction(clip)
+            .setEffectiveTimeScale(animationPlaybackRate(clip.name)),
         ]),
       ),
     [mixer, animations],
@@ -151,6 +344,22 @@ export function Character({
     [rig],
   );
   const motion = useRef(createMotion());
+  // Finish the seat-facing turn even if lifecycle completion removes the
+  // transition prop before the next rendered frame.
+  const turning = useRef(false);
+  const fallbackPoseTime = useRef(0);
+  const travel = useRef<{
+    routeKey: string;
+    route: Route;
+    total: number;
+    token: string;
+    state: LifecycleWalk;
+  } | null>(null);
+  const routeKey = JSON.stringify(lifecycleRoute ?? []);
+  const lifecycleTotal = useMemo(
+    () => (lifecycleRoute ? routeLength(lifecycleRoute) : 0),
+    [routeKey],
+  );
   const [hovered, setHovered] = useState(false);
   const reduced = useReducedMotion();
   const [bubble, setBubble] = useState<{
@@ -174,6 +383,10 @@ export function Character({
   const prevVisual = useRef("");
   useEffect(() => {
     if (!command || command.id !== agent.id) return;
+    const commandKey = `${command.id}:${command.type}:${command.serial}`;
+    if (!consumeVisualCommand(reservations.current, trafficId, commandKey))
+      return;
+    if (transition) return;
     if (reduced) {
       const m = motion.current;
       if (command.type === "walk") {
@@ -181,25 +394,31 @@ export function Character({
         m.distance = total;
         m.dwell = Infinity;
         m.pending = false;
+        m.turnRemaining = 0;
       } else if (command.type === "return") {
         m.mode = "seated";
         m.distance = 0;
         m.pending = false;
+        m.turnRemaining = 0;
       } else m.waveUntil = performance.now() / 1000 + 2.6;
-      if (reservations.current.get(roomId) === agent.id)
+      if (reservations.current.get(roomId) === trafficId)
         reservations.current.delete(roomId);
       return;
     }
     requestMotion(motion.current, command.type, performance.now() / 1000);
-  }, [command, agent.id, reduced, total, reservations, roomId]);
+  }, [command, agent.id, reduced, total, reservations, roomId, transition]);
+  useEffect(
+    () => () => {
+      positions.current.delete(agent.id);
+      releaseLifecycleWalk(reservations.current, roomId, trafficId);
+    },
+    [agent.id, positions, reservations, roomId],
+  );
   useEffect(
     () => () => {
       mixer.stopAllAction();
-      positions.current.delete(agent.id);
-      if (reservations.current.get(roomId) === agent.id)
-        reservations.current.delete(roomId);
     },
-    [agent.id, mixer, positions, reservations, roomId],
+    [mixer],
   );
   const setPose = (name: string) => {
     const next = actions[name];
@@ -213,37 +432,154 @@ export function Character({
     currentAction.current = next || null;
   };
   useFrame(({ clock, camera }, rawDelta) => {
-    const delta = Math.min(rawDelta, 0.05);
+    const delta = motionFrameDelta(rawDelta);
     const m = motion.current;
     if (!group.current) return;
     const now = performance.now() / 1000;
-    stepMotion(m, delta, total, roomId, agent.id, reservations.current);
-    const walking = m.mode === "outbound" || m.mode === "returning";
-    const point = sampleRoute(desk.route, m.distance);
+    let life: LifecycleWalk | null = null;
+    let activeLifecycleRoute = lifecycleRoute;
+    let activeLifecycleTotal = lifecycleTotal;
+    let returningBeforeExit = false;
+    let enteringFromOffsite = false;
+    if (transition && lifecycleRoute) {
+      if (
+        !travel.current ||
+        (travel.current.state.phase === "settled" &&
+          travel.current.token !== transition.token)
+      ) {
+        travel.current = {
+          routeKey,
+          route: lifecycleRoute,
+          total: lifecycleTotal,
+          token: transition.token,
+          state: createLifecycleWalk(transition.direction, lifecycleTotal),
+        };
+        // A new run marker for somebody already strolling does not teleport
+        // them outdoors. Safely return that existing actor, then settle seated.
+        if (transition.direction === "arriving" && m.mode !== "seated")
+          travel.current.state.distance = lifecycleTotal;
+      }
+      // A still-hidden successor may be assigned another chair if the original
+      // departing owner restarts. Updating an offsite route is safe; an active
+      // path is immutable until completion or an explicit view-scope reset.
+      if (
+        travel.current.routeKey !== routeKey &&
+        travel.current.state.phase === "waiting" &&
+        travel.current.state.direction === "arriving" &&
+        travel.current.state.distance === 0
+      ) {
+        travel.current.routeKey = routeKey;
+        travel.current.route = lifecycleRoute;
+        travel.current.total = lifecycleTotal;
+      }
+      life = travel.current.state;
+      activeLifecycleRoute = travel.current.route;
+      activeLifecycleTotal = travel.current.total;
+      travel.current.token = transition.token;
+      reverseLifecycleWalk(life, transition.direction, activeLifecycleTotal);
+      enteringFromOffsite =
+        life.phase === "waiting" &&
+        life.direction === "arriving" &&
+        life.distance === 0;
+      // A resident already taking a stroll returns along that safe route before
+      // standing up to depart. Its existing aisle reservation is retained.
+      if (life.phase === "waiting" && m.mode !== "seated") {
+        requestMotion(m, "return", now);
+        returningBeforeExit = true;
+        stepMotion(m, delta, total, roomId, trafficId, reservations.current);
+      } else {
+        m.pending = false;
+        const completed = reduced
+          ? !life.notified
+            ? ((life.distance =
+                life.direction === "arriving" ? activeLifecycleTotal : 0),
+              (life.phase = "settled"),
+              (life.turnRemaining = 0),
+              (life.notified = true),
+              releaseLifecycleWalk(reservations.current, roomId, trafficId),
+              life.direction)
+            : null
+          : stepLifecycleWalk(
+              life,
+              delta,
+              activeLifecycleTotal,
+              LIFECYCLE_WALK_SPEED,
+              roomId,
+              trafficId,
+              reservations.current,
+            );
+        if (completed) onLifecycleComplete?.(transition.token, completed);
+      }
+    } else {
+      if (travel.current) {
+        travel.current = null;
+        releaseLifecycleWalk(reservations.current, roomId, trafficId);
+        Object.assign(m, createMotion());
+      }
+      stepMotion(m, delta, total, roomId, trafficId, reservations.current);
+    }
+    const traveling = !returningBeforeExit ? life : null;
+    const seated = traveling
+      ? traveling.phase === "seating" ||
+        (traveling.phase === "waiting" && traveling.direction === "exiting") ||
+        (traveling.phase === "settled" && traveling.direction === "arriving")
+      : m.mode === "seated";
+    const reversing = (traveling?.turnRemaining ?? m.turnRemaining) > 0;
+    const walking =
+      !reversing &&
+      (traveling
+        ? traveling.phase === "walking"
+        : m.mode === "outbound" || m.mode === "returning");
+    const routePose = sampleLifecycleRoutePose(
+      traveling && activeLifecycleRoute ? activeLifecycleRoute : desk.route,
+      traveling ? traveling.distance : m.distance,
+    );
+    const point = routePose.position;
+    const wasVisible = group.current.visible;
+    group.current.visible = !(
+      traveling &&
+      ((traveling.phase === "settled" && traveling.direction === "exiting") ||
+        (traveling.phase === "waiting" && traveling.direction === "arriving"))
+    );
+    group.current.userData.lifecycle = traveling
+      ? {
+          direction: traveling.direction,
+          phase: traveling.phase,
+          distance: traveling.distance,
+          total: activeLifecycleTotal,
+          turnRemaining: traveling.turnRemaining,
+        }
+      : null;
     group.current.position.set(
       point[0],
-      m.mode === "seated" ? RESIDENT_SEATED_Y : RESIDENT_STANDING_Y,
+      seated ? RESIDENT_SEATED_Y : RESIDENT_STANDING_Y,
       point[1],
     );
-    if (walking) {
-      const ahead = sampleRoute(
-        desk.route,
-        THREE.MathUtils.clamp(
-          m.distance + (m.mode === "returning" ? -0.12 : 0.12),
-          0,
-          total,
-        ),
-      );
-      const dx = ahead[0] - point[0],
-        dz = ahead[1] - point[1];
-      if (Math.abs(dx) + Math.abs(dz) > 0.001) m.yaw = Math.atan2(-dx, -dz);
-    } else if (m.mode === "seated") m.yaw = 0;
-    const angle =
-      THREE.MathUtils.euclideanModulo(
-        m.yaw - group.current.rotation.y + Math.PI,
-        Math.PI * 2,
-      ) - Math.PI;
-    group.current.rotation.y += angle * Math.min(1, delta * 12);
+    if (walking || reversing || traveling?.phase === "standing") {
+      const backwards = traveling
+        ? traveling.direction === "exiting"
+        : m.mode === "returning";
+      m.yaw = routePose.yaw + (backwards ? Math.PI : 0);
+      turning.current = true;
+    } else if (seated) {
+      m.yaw = desk.orientation;
+    }
+    // An offsite arrival can be oriented before its first visible frame.
+    // All visible turns, including walk/seat boundaries and reversals, use
+    // the same bounded step instead of snapping to a new route segment.
+    if (reduced || (!wasVisible && enteringFromOffsite)) {
+      group.current.rotation.y = m.yaw;
+    } else if (!turning.current && seated) {
+      // A static desk reassignment may set its facing immediately. Preserve
+      // an already equivalent unwrapped heading after a completed turn.
+      if (Math.abs(Math.sin((m.yaw - group.current.rotation.y) / 2)) > 1e-8)
+        group.current.rotation.y = m.yaw;
+    } else {
+      const next = stepHeading(group.current.rotation.y, m.yaw, delta);
+      group.current.rotation.y = next;
+      if (seated && Math.abs(Math.sin((m.yaw - next) / 2)) < 1e-8)
+        turning.current = false;
+    }
     const waving = m.waveUntil > now;
     const reportedClip = presentation(agent).clip;
     const transientFinished =
@@ -251,23 +587,19 @@ export function Character({
       now - stateStarted.current.time > 5.8;
     const stateClip = transientFinished ? "idleseated" : reportedClip;
     const wanted = reduced
-      ? m.mode === "seated"
+      ? seated
         ? "idleseated"
         : "idle"
       : walking
         ? "walk"
         : waving
-          ? m.mode === "seated"
+          ? seated
             ? "waveseated"
             : "wave"
-          : m.mode === "seated"
+          : seated
             ? stateClip
             : "idle";
-    const pose = actions[wanted]
-      ? wanted
-      : m.mode === "seated"
-        ? "idleseated"
-        : "idle";
+    const pose = actions[wanted] ? wanted : seated ? "idleseated" : "idle";
     setPose(pose);
     if (reduced) {
       const action = actions[pose];
@@ -305,7 +637,10 @@ export function Character({
       }
     }
     if (!actions[pose]) {
-      const t = reduced ? 0 : clock.elapsedTime;
+      if (!reduced)
+        fallbackPoseTime.current +=
+          delta * animationPlaybackRate(walking ? "walk" : pose);
+      const t = reduced ? 0 : fallbackPoseTime.current;
       const joint = (name: string, x = 0, z = 0) => {
         const j = joints[name];
         if (j) {
@@ -315,42 +650,45 @@ export function Character({
         }
       };
       const step = walking ? Math.sin(t * 7) * 0.6 : 0;
-      rig.position.y =
-        m.mode === "seated"
-          ? -0.35
-          : walking
-            ? Math.abs(Math.sin(t * 7)) * 0.025
-            : Math.sin(t * 1.3) * 0.008;
-      joint("UpperLeg.L", m.mode === "seated" ? 1.45 : step);
-      joint("UpperLeg.R", m.mode === "seated" ? 1.45 : -step);
-      joint(
-        "LowerLeg.L",
-        m.mode === "seated" ? -1.45 : Math.max(0, -step) * 0.65,
-      );
-      joint(
-        "LowerLeg.R",
-        m.mode === "seated" ? -1.45 : Math.max(0, step) * 0.65,
-      );
-      joint("UpperArm.L", m.mode === "seated" ? 0.8 : -step * 0.65);
+      rig.position.y = seated
+        ? -0.35
+        : walking
+          ? Math.abs(Math.sin(t * 7)) * 0.025
+          : Math.sin(t * 1.3) * 0.008;
+      joint("UpperLeg.L", seated ? 1.45 : step);
+      joint("UpperLeg.R", seated ? 1.45 : -step);
+      joint("LowerLeg.L", seated ? -1.45 : Math.max(0, -step) * 0.65);
+      joint("LowerLeg.R", seated ? -1.45 : Math.max(0, step) * 0.65);
+      joint("UpperArm.L", seated ? 0.8 : -step * 0.65);
       joint(
         "UpperArm.R",
-        waving ? 2.8 : m.mode === "seated" ? 0.8 : step * 0.65,
+        waving ? 2.8 : seated ? 0.8 : step * 0.65,
         waving ? Math.sin(t * 10) * 0.2 : 0,
       );
-      joint("LowerArm.L", m.mode === "seated" ? 0.55 : 0);
-      joint("LowerArm.R", waving ? 0.4 : m.mode === "seated" ? 0.55 : 0);
+      joint("LowerArm.L", seated ? 0.55 : 0);
+      joint("LowerArm.R", waving ? 0.4 : seated ? 0.55 : 0);
       joint("Head", 0, Math.sin(t * 0.8 + index) * 0.025);
     }
-    positions.current.set(agent.id, group.current.position.clone());
-    const label = m.pending
-      ? "Waiting for the aisle"
-      : walking
-        ? "Taking a stroll"
-        : m.mode === "lounge"
-          ? "Enjoying the lounge"
-          : waving
-            ? "Hello!"
-            : "";
+    if (group.current.visible)
+      positions.current.set(agent.id, group.current.position.clone());
+    else positions.current.delete(agent.id);
+    const label = traveling
+      ? traveling.direction === "arriving"
+        ? traveling.phase === "waiting"
+          ? "Waiting outside"
+          : "Walking into the office"
+        : traveling.phase === "waiting"
+          ? "Waiting for the aisle"
+          : "Leaving the office"
+      : m.pending
+        ? "Waiting for the aisle"
+        : walking
+          ? "Taking a stroll"
+          : m.mode === "lounge"
+            ? "Enjoying the lounge"
+            : waving
+              ? "Hello!"
+              : "";
     if (label !== prevVisual.current) {
       prevVisual.current = label;
       setVisual(label);
@@ -359,8 +697,13 @@ export function Character({
   return (
     <group
       ref={group}
+      name={`resident-${agent.id}`}
+      visible={transition?.direction !== "arriving"}
+      rotation={[0, desk.orientation, 0]}
       position={
-        [...desk.seat.slice(0, 1), 0, desk.seat[1]] as [number, number, number]
+        transition?.direction === "arriving" && lifecycleRoute
+          ? [lifecycleRoute[0][0], RESIDENT_STANDING_Y, lifecycleRoute[0][1]]
+          : [desk.seat[0], RESIDENT_SEATED_Y, desk.seat[1]]
       }
     >
       <group
@@ -426,6 +769,9 @@ function Room({
   command,
   positions,
   reservations,
+  residents,
+  layouts,
+  onComplete,
 }: {
   session: Session;
   layout: RoomLayout;
@@ -434,175 +780,108 @@ function Room({
   command: Command;
   positions: Registry;
   reservations: React.MutableRefObject<Map<string, string>>;
+  residents: ResidentEntry[];
+  layouts: RoomLayout[];
+  onComplete: (
+    key: string,
+    token: string,
+    direction: LifecycleDirection,
+  ) => void;
 }) {
-  const x = layout.center[0];
-  const shown = session.agents.slice(0, MAX_VISIBLE_DESKS);
-  const chosen = session.agents.find((a) => a.id === selected);
-  if (chosen && !shown.includes(chosen)) shown[MAX_VISIBLE_DESKS - 1] = chosen;
-  const accents = ["#577b69", "#688082", "#8a7662", "#737d62"];
-  const accent = accents[layout.index % accents.length];
+  const [x, z] = layout.center;
   return (
     <group>
-      <Solid
-        position={[x, -0.18, 0]}
-        size={[12.4, 0.36, 10.4]}
-        color="#8d8e74"
-      />
-      <Solid
-        position={[x, 0, 0]}
-        size={[12.05, 0.055, 10.05]}
-        color="#b7a184"
-      />
-      {Array.from({ length: 30 }, (_, i) => (
-        <Solid
-          key={i}
-          position={[x - 5.82 + i * 0.4, 0.031, 0]}
-          size={[0.009, 0.004, 10]}
-          color="#988469"
-        />
-      ))}
-      <Solid
-        position={[x, 1.55, -5]}
-        size={[12.2, 3.1, 0.18]}
-        color="#e4dfc8"
-      />
-
-      <Solid
-        position={[x, 0.12, -4.82]}
-        size={[12, 0.16, 0.12]}
-        color="#7c7b61"
-      />
-      {[-3.8, 0, 3.8].map((w) => (
-        <group key={w}>
-          <Solid
-            position={[x + w, 1.8, -4.88]}
-            size={[2.75, 1.65, 0.06]}
-            color="#9fbdb7"
-            roughness={0.2}
-          />
-          <Solid
-            position={[x + w, 0.94, -4.75]}
-            size={[2.9, 0.09, 0.35]}
-            color="#eee4cd"
-          />
-          {[-0.88, 0, 0.88].map((s) => (
-            <Solid
-              key={s}
-              position={[x + w + s, 1.8, -4.82]}
-              size={[0.055, 1.67, 0.08]}
-              color="#ede4cc"
-            />
-          ))}
-          <Solid
-            position={[x + w, 1.8, -4.81]}
-            size={[2.76, 0.05, 0.08]}
-            color="#ede4cc"
-          />
-          {[-1.25, 1.25].map((s) => (
-            <Solid
-              key={s}
-              position={[x + w + s, 1.8, -4.7]}
-              size={[0.19, 1.85, 0.12]}
-              color={accent}
-            />
-          ))}
-        </group>
-      ))}
-      <Solid
-        position={[x - 1, 0.045, -0.45]}
-        size={[9.9, 0.016, 6.9]}
-        color={layout.index % 2 ? "#8f9d8b" : "#a0ac91"}
-      />
-      <Asset name="plant" position={[x - 5.35, 0.05, -4.25]} scale={1.05} />
-      <Asset name="plant" position={[x + 5.35, 0.05, -4.25]} />
-      <Asset
-        name="bookshelf"
-        position={[x - 5.55, 0.05, 0.9]}
-        rotation={Math.PI / 2}
-      />
-      <Asset name="floorlamp" position={[x - 5.25, 0.05, 3.4]} />
-      <Asset name="sofa" position={[x - 2.8, 0.05, 4.65]} rotation={Math.PI} />
-      <Asset name="plant" position={[x + 4.8, 0.05, 4.65]} scale={0.7} />
-      {layout.partitions.map((panel, i) => (
-        <group key={`partition-${i}`}>
-          <Solid
-            position={[
-              panel.center[0],
-              panel.height / 2 + 0.045,
-              panel.center[1],
-            ]}
-            size={[panel.width, panel.height, panel.depth]}
-            color={accent}
-            roughness={0.96}
-          />
-          <Solid
-            position={[panel.center[0], panel.height + 0.065, panel.center[1]]}
-            size={[panel.width + 0.025, 0.045, panel.depth + 0.025]}
-            color="#a99875"
-          />
-          <Solid
-            position={[panel.center[0], 0.105, panel.center[1]]}
-            size={[panel.width, 0.1, panel.depth + 0.03]}
-            color="#777e68"
-          />
-        </group>
-      ))}
+      <Decor solids={createRoomDecor(layout)} />
+      <Asset name="plant" position={[x - 5.35, 0.05, z - 4.25]} scale={0.8} />
+      <Asset name="plant" position={[x + 5.35, 0.05, z - 4.25]} scale={0.8} />
       <Html
         center
-        position={[x, 2.75, -4.77]}
+        position={[x, 2.62, z - 4.82]}
         zIndexRange={[7, 0]}
         style={{ pointerEvents: "none" }}
       >
         <div className="room-plaque">
           {session.name}
           <small>
-            {session.agents.length}{" "}
-            {session.agents.length === 1 ? "agent" : "agents"}
+            {projectRosterSummary(session)}
             {session.agents.length > 6 ? " · 6 desks shown" : ""}
           </small>
         </div>
       </Html>
-      {shown.map((agent, i) => {
-        const desk = layout.desks[i];
+      {layout.desks.map((desk) => (
+        <group key={`furniture-${desk.index}`}>
+          <Asset
+            name="desk"
+            position={[desk.desk[0], 0.04, desk.desk[1]]}
+            rotation={desk.orientation}
+          />
+          <Asset
+            name="chair"
+            position={[desk.seat[0], 0.04, desk.seat[1]]}
+            rotation={desk.orientation}
+          />
+        </group>
+      ))}
+      {residents.map((resident) => {
+        const desk = layout.desks[resident.deskIndex];
         if (!desk) return null;
         return (
-          <group key={agent.id}>
-            <Asset name="desk" position={[desk.desk[0], 0.04, desk.desk[1]]} />
-            <Asset name="chair" position={[desk.seat[0], 0.04, desk.seat[1]]} />
-            <Suspense fallback={null}>
-              <Character
-                agent={agent}
-                desk={desk}
-                roomId={session.id}
-                selected={selected === agent.id}
-                onSelect={() => onSelect(agent.id)}
-                command={command}
-                positions={positions}
-                reservations={reservations}
-                index={i + layout.index * 3}
-              />
-            </Suspense>
-          </group>
+          <Suspense key={resident.key} fallback={null}>
+            <Character
+              agent={resident.agent}
+              desk={desk}
+              roomId={session.id}
+              selected={selected === resident.agent.id}
+              onSelect={() => onSelect(resident.agent.id)}
+              command={command}
+              positions={positions}
+              reservations={reservations}
+              index={resident.deskIndex + layout.index * 3}
+              transition={resident.transition}
+              lifecycleRoute={
+                resident.transition
+                  ? createBuildingEntryRoute(
+                      layouts,
+                      layout,
+                      desk,
+                      resident.transition.queueIndex,
+                    )
+                  : undefined
+              }
+              onLifecycleComplete={(token, direction) =>
+                onComplete(resident.key, token, direction)
+              }
+            />
+          </Suspense>
         );
       })}
-      {!shown.length && (
+      {!layout.desks.length && (
         <>
-          <Asset name="desk" position={[x - 2, 0.04, -1]} />
-          <Asset name="chair" position={[x - 2, 0.04, -0.15]} />
-          <Asset name="desk" position={[x + 1, 0.04, -1]} />
-          <Asset name="chair" position={[x + 1, 0.04, -0.15]} />
+          <Asset name="desk" position={[x, 0.04, z - 1.4]} rotation={Math.PI} />
+          <Asset
+            name="chair"
+            position={[x, 0.04, z - 2.14]}
+            rotation={Math.PI}
+          />
+          <Asset name="desk" position={[x, 0.04, z + 0.4]} />
+          <Asset name="chair" position={[x, 0.04, z + 1.14]} />
         </>
       )}
       <pointLight
-        position={[x - 4, 2.1, 3.5]}
+        position={[x - 4, 2.1, z + 3.5]}
         intensity={5}
         distance={6}
-        color="#ffd99b"
+        color="#d9efff"
       />
     </group>
   );
 }
 export default function Office({
+  onFacility = () => {},
+  lifecycleEvents = [],
+  lifecycleEpoch = 0,
+  lifecycleEnabled = false,
+  connection = "connected",
   cameraAction,
   sessions,
   selected,
@@ -612,6 +891,11 @@ export default function Office({
   command,
   onStopFollow,
 }: {
+  onFacility?: (facility: WorkplaceFacility) => void;
+  lifecycleEvents?: AgentLifecycleEvent[];
+  lifecycleEpoch?: number;
+  lifecycleEnabled?: boolean;
+  connection?: "connecting" | "connected" | "disconnected";
   cameraAction?: CameraAction | null;
   sessions: Session[];
   selected: string | null;
@@ -621,20 +905,46 @@ export default function Office({
   command: Command;
   onStopFollow: () => void;
 }) {
+  const reduced = useReducedMotion();
+  const { residents, complete, scope } = useResidentLifecycle({
+    sessions,
+    selected,
+    events: lifecycleEvents,
+    epoch: lifecycleEpoch,
+    enabled: lifecycleEnabled,
+    reduced,
+    connection,
+  });
   const positions = useRef(new Map<string, THREE.Vector3>());
   const reservations = useRef(new Map<string, string>());
   const rooms = sessions.length
     ? sessions
     : [{ id: "empty-office", name: "Your next session", agents: [] }];
-  const width = rooms.length * 14;
+  const layouts = createOfficeLayout(
+    rooms.map((room) => ({
+      id: room.id,
+      agentCount: Math.max(
+        room.agents.length,
+        ...residents
+          .filter((resident) => resident.roomId === room.id)
+          .map((resident) => resident.deskIndex + 1),
+      ),
+    })),
+  );
+  const bounds = buildingLayoutBounds(rooms.length);
+  const width = bounds.maxX - bounds.minX,
+    depth = bounds.maxZ - bounds.minZ;
+  const centerX = (bounds.minX + bounds.maxX) / 2,
+    centerZ = (bounds.minZ + bounds.maxZ) / 2;
+  const shadowExtent = Math.max(width, depth) + 10;
   return (
     <Canvas
       shadows
       dpr={[1, 1.6]}
       gl={{ antialias: true, powerPreference: "high-performance" }}
     >
-      <color attach="background" args={["#a5b5a0"]} />
-      <fog attach="fog" args={["#a5b5a0", 48, 115]} />
+      <color attach="background" args={["#b3c3ce"]} />
+      <fog attach="fog" args={["#b3c3ce", 48, 115]} />
       <PerspectiveCamera
         makeDefault
         fov={42}
@@ -643,31 +953,31 @@ export default function Office({
         far={200}
       />
       <ambientLight intensity={0.7} />
-      <hemisphereLight args={["#fff6df", "#587663", 1.6]} />
+      <hemisphereLight args={["#f0f6ff", "#657c8b", 1.6]} />
       <directionalLight
         castShadow
         position={[-8, 20, 10]}
         intensity={2.8}
-        color="#fff0cc"
+        color="#f1f6ff"
         shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-15}
-        shadow-camera-right={width + 6}
-        shadow-camera-top={15}
-        shadow-camera-bottom={-15}
+        shadow-camera-left={-shadowExtent}
+        shadow-camera-right={shadowExtent}
+        shadow-camera-top={shadowExtent}
+        shadow-camera-bottom={-shadowExtent}
         shadow-normalBias={0.035}
       />
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[width / 2 - 7, -0.39, 0]}
+        position={[centerX, -0.39, centerZ]}
         receiveShadow
       >
         <planeGeometry args={[150, 150]} />
-        <meshStandardMaterial color="#879b79" roughness={1} />
+        <meshStandardMaterial color="#8399a8" roughness={1} />
       </mesh>
       <Solid
-        position={[(rooms.length - 1) * 7, -0.27, 1]}
-        size={[width + 3, 0.15, 16]}
-        color="#b9bba0"
+        position={[centerX, -0.27, centerZ]}
+        size={[width + 3, 0.15, depth + 3]}
+        color="#b4c0c8"
       />
       <Suspense
         fallback={
@@ -678,19 +988,24 @@ export default function Office({
       >
         {rooms.map((s, i) => (
           <Room
-            key={s.id}
+            key={`${s.id}:${scope}`}
             session={s}
-            layout={createRoomLayout(s.id, i, s.agents.length)}
+            layout={layouts[i]}
             selected={selected}
             onSelect={onSelect}
             command={command}
             positions={positions}
             reservations={reservations}
+            residents={residents.filter((resident) => resident.roomId === s.id)}
+            layouts={layouts}
+            onComplete={complete}
           />
         ))}
+        <SharedWorkplace count={rooms.length} onFacility={onFacility} />
+        <BuildingEntrance count={rooms.length} />
         <ContactShadows
-          position={[(rooms.length - 1) * 7, -0.385, 0]}
-          scale={Math.max(30, width + 10)}
+          position={[centerX, -0.385, centerZ]}
+          scale={Math.max(30, width + 10, depth + 10)}
           opacity={0.18}
           far={15}
           blur={2}

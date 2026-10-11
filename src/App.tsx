@@ -1,5 +1,15 @@
-import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  Component,
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  Building2,
   ArrowLeft,
   ArrowUpRight,
   Check,
@@ -19,11 +29,13 @@ import {
   Users,
   X,
 } from "lucide-react";
-import Office from "./Office";
+const Office = lazy(() => import("./Office"));
+import WorkplacePanel, { type WorkplaceFacility } from "./WorkplacePanel";
 import RoomSelector from "./RoomSelector";
 import { stateColor } from "./state";
 import { demo } from "./demo";
 import { useOfficeData } from "./useOfficeData";
+import { projectOffices, projectRosterSummary } from "./projectProjection";
 import type { CameraAction } from "./camera";
 const metric = (n: number | null | undefined) =>
   n == null ? "Not reported" : n.toLocaleString();
@@ -58,11 +70,13 @@ class SceneBoundary extends Component<
   }
 }
 export default function App() {
-  const { snapshot, connection } = useOfficeData();
+  const { snapshot, connection, lifecycleEvents, lifecycleEpoch } =
+    useOfficeData();
   const [mode, setMode] = useState<"live" | "demo">("live");
   const [selected, setSelected] = useState<string | null>(null);
   const [focusSession, setFocusSession] = useState("all");
   const [roster, setRoster] = useState(false);
+  const [facility, setFacility] = useState<WorkplaceFacility | null>(null);
   const [guide, setGuide] = useState(false);
   const guideOpener = useRef<HTMLElement | null>(null);
   const openGuide = () => {
@@ -80,22 +94,33 @@ export default function App() {
     type: "wave" | "walk" | "return";
     serial: number;
   } | null>(null);
-  const sessions = mode === "demo" ? demo.sessions : snapshot.sessions;
+  const sessions = useMemo(
+    () => (mode === "demo" ? demo.sessions : projectOffices(snapshot.sessions)),
+    [mode, snapshot.sessions],
+  );
   const agents = sessions.flatMap((s) => s.agents);
   const agent = agents.find((a) => a.id === selected);
   const currentSession = sessions.find((s) =>
     s.agents.some((a) => a.id === selected),
   );
-  const shownSessions =
+  const visibleWindow =
     focusSession === "all"
       ? sessions.slice(0, 4)
       : sessions.filter((s) => s.id === focusSession);
+  // Availability chooses which four projects receive scarce overview space.
+  // It must not reshuffle the physical rooms when that membership is unchanged:
+  // a last-root stop still needs its original room and departure route.
+  const shownSessions =
+    mode === "live"
+      ? [...visibleWindow].sort((a, b) => a.id.localeCompare(b.id))
+      : visibleWindow;
   const filtered = agents.filter((a) =>
     `${a.name} ${a.task || ""} ${a.role || ""}`
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
   const choose = (id: string) => {
+    setFacility(null);
     setSelected(id);
     setDetails(false);
     setRoster(false);
@@ -107,6 +132,7 @@ export default function App() {
     }
   };
   useEffect(() => {
+    setFacility(null);
     setSelected(null);
     setFollow(null);
     setCommand(null);
@@ -132,7 +158,7 @@ export default function App() {
   }, [sessions, selected, focusSession]);
   useEffect(() => {
     const escape = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || facility) return;
       if (guide) setGuide(false);
       else if (roster) setRoster(false);
       else if (details) setDetails(false);
@@ -141,7 +167,7 @@ export default function App() {
     };
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
-  }, [guide, roster, details, follow]);
+  }, [guide, roster, details, follow, facility]);
   useEffect(() => {
     if (!guide) return;
     const previous = guideOpener.current;
@@ -177,16 +203,33 @@ export default function App() {
     <div className="game-shell">
       <div className="world-layer">
         <SceneBoundary>
-          <Office
-            sessions={shownSessions}
-            selected={selected}
-            onSelect={choose}
-            reset={reset}
-            follow={follow}
-            command={command}
-            onStopFollow={() => setFollow(null)}
-            cameraAction={cameraAction}
-          />
+          <Suspense
+            fallback={
+              <div className="scene-loading" role="status">
+                Opening the workplace…
+              </div>
+            }
+          >
+            <Office
+              onFacility={(kind) => {
+                setFacility(kind);
+                setRoster(false);
+                setDetails(false);
+              }}
+              lifecycleEvents={lifecycleEvents}
+              lifecycleEpoch={lifecycleEpoch}
+              lifecycleEnabled={mode === "live"}
+              connection={connection}
+              sessions={shownSessions}
+              selected={selected}
+              onSelect={choose}
+              reset={reset}
+              follow={follow}
+              command={command}
+              onStopFollow={() => setFollow(null)}
+              cameraAction={cameraAction}
+            />
+          </Suspense>
         </SceneBoundary>
       </div>
       <header className="game-header">
@@ -215,13 +258,13 @@ export default function App() {
           options={[
             {
               value: "all",
-              label: sessions.length > 4 ? "First 4 sections" : "Whole office",
+              label: sessions.length > 4 ? "First 4 projects" : "Whole office",
               description: "Shared office overview",
             },
             ...sessions.map((session) => ({
               value: session.id,
               label: session.name,
-              description: `${session.agents.length} ${session.agents.length === 1 ? "agent" : "agents"} · project section`,
+              description: `${projectRosterSummary(session)} · ${session.cwd || "Path not reported"}`,
             })),
           ]}
           onChange={(value) => {
@@ -248,6 +291,42 @@ export default function App() {
           <HelpCircle size={17} />
         </button>
       </header>
+      <button
+        className="workplace-open"
+        onClick={() => {
+          setFacility("reception");
+          setRoster(false);
+          setDetails(false);
+        }}
+        aria-label="Open workplace overview"
+      >
+        <Building2 size={16} /> Workplace
+      </button>
+      {facility && (
+        <WorkplacePanel
+          sessions={sessions}
+          mode={mode}
+          connection={connection}
+          facility={facility}
+          onClose={() => setFacility(null)}
+          onSelect={choose}
+          onOpenRoster={() => {
+            setFacility(null);
+            setRoster(true);
+          }}
+          onFocusSession={(id) => {
+            setFacility(null);
+            setFocusSession(id);
+            setSelected(null);
+            setFollow(null);
+            setReset((n) => n + 1);
+          }}
+          onVisualCommand={(id, type) => {
+            choose(id);
+            setCommand({ id, type, serial: Date.now() });
+          }}
+        />
+      )}
       <div className="mode-dock" aria-label="Data source">
         <button
           className={mode === "live" ? "active" : ""}
@@ -272,9 +351,9 @@ export default function App() {
         <div className="welcome-note">
           <span>THE OFFICE IS READY</span>
           <h1>
-            A place for your
+            Your work.
             <br />
-            next great thing.
+            One shared office.
           </h1>
           <p>Connect a Pi session to bring it to life.</p>
           <div>
@@ -471,6 +550,9 @@ export default function App() {
                   {s.name}
                   <span>{s.agents.length}</span>
                 </h3>
+                {s.sourceSessions && (
+                  <p className="small-note">{projectRosterSummary(s)}</p>
+                )}
                 {s.agents
                   .filter((a) => filtered.includes(a))
                   .map((a) => (
@@ -482,7 +564,15 @@ export default function App() {
                       <i style={{ background: stateColor(a.state) }} />
                       <div>
                         <strong>{a.name}</strong>
-                        <span>{a.task || "No task reported"}</span>
+                        <span>
+                          {a.source?.historical ? "Historical · " : ""}
+                          {a.task || "No task reported"}
+                        </span>
+                        {a.source && (
+                          <span>
+                            {a.source.sessionName} · {a.source.sessionId}
+                          </span>
+                        )}
                       </div>
                       <small>{a.state}</small>
                     </button>
@@ -552,7 +642,10 @@ export default function App() {
                   <div>
                     <dt>Model</dt>
                     <dd>
-                      {agent.model || currentSession?.model || "Not reported"}
+                      {agent.model ||
+                        agent.source?.model ||
+                        currentSession?.model ||
+                        "Not reported"}
                     </dd>
                   </div>
                   <div>
@@ -575,11 +668,42 @@ export default function App() {
                     <dt>Last observed</dt>
                     <dd>{time(agent.updatedAt)}</dd>
                   </div>
+                  {agent.source && (
+                    <>
+                      <div>
+                        <dt>Source session</dt>
+                        <dd>{agent.source.sessionName}</dd>
+                      </div>
+                      <div>
+                        <dt>Session ID</dt>
+                        <dd>{agent.source.sessionId}</dd>
+                      </div>
+                      <div>
+                        <dt>Agent ID</dt>
+                        <dd>{agent.source.agentId}</dd>
+                      </div>
+                      <div>
+                        <dt>Roster</dt>
+                        <dd>
+                          {agent.source.historical
+                            ? "Historical observation"
+                            : "Current observation"}
+                        </dd>
+                      </div>
+                    </>
+                  )}
                 </dl>
                 <label>WORKSPACE</label>
                 <p className="path-copy">
-                  {currentSession?.cwd || "Not reported"}
+                  {(agent.source ? agent.source.cwd : currentSession?.cwd) ||
+                    "Not reported"}
                 </p>
+                {currentSession?.project && (
+                  <>
+                    <label>PROJECT ROOT</label>
+                    <p className="path-copy">{currentSession.project.root}</p>
+                  </>
+                )}
                 <p className="small-note">
                   {mode === "demo"
                     ? "Illustrative sample values."
@@ -619,8 +743,8 @@ export default function App() {
           >
             <div className="panel-heading">
               <div>
-                <span>MAKE YOURSELF AT HOME</span>
-                <h2>A living view of your work.</h2>
+                <span>YOUR WORKPLACE GUIDE</span>
+                <h2>A clear view of your team.</h2>
               </div>
               <button
                 aria-label="Close guide"
@@ -631,9 +755,10 @@ export default function App() {
               </button>
             </div>
             <p>
-              Each Pi session gets an airy cubicle section. Click an agent to
-              inspect, wave, take a stroll, or follow. These actions animate the
-              character; they never send instructions to Pi.
+              Each project gets an airy cubicle section, shared by its Pi
+              sessions. Click an agent to inspect, wave, take a stroll, or
+              follow. These actions animate the character; they never send
+              instructions to Pi.
             </p>
             <ol>
               <li>

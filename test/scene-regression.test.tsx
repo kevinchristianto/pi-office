@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { PerspectiveCamera, Vector3 } from "three";
 import { fitOfficeCamera } from "../src/camera";
+import { createRoomLayout, buildingLayoutBounds } from "../src/world";
 const capture = vi.hoisted(() => ({ props: {} as Record<string, unknown> }));
 vi.mock("@react-three/drei", () => ({
   Html: (props: any) => {
@@ -43,23 +44,44 @@ describe("office label and camera regression", () => {
     [700, 600],
     [358, 260],
     [220, 360],
+    [390, 844],
+    [320, 1200],
   ]) {
-    for (const count of [1, 2, 4]) {
+    for (const count of [0, 1, 2, 3, 4, 9, 25]) {
       it(`fits every room corner at ${width}x${height}, rooms ${count}`, () => {
         const fit = fitOfficeCamera(width, height, count);
-        const camera = new PerspectiveCamera(fit.fov, width / height, 0.1, 250);
+        const camera = new PerspectiveCamera(
+          fit.fov,
+          width / height,
+          0.1,
+          Math.max(250, fit.distance * 1.6 + 80),
+        );
         camera.position.set(...fit.position);
         camera.lookAt(...fit.target);
         camera.updateMatrixWorld();
         camera.updateProjectionMatrix();
         expect(Number.isFinite(fit.distance) && fit.distance > 0).toBe(true);
-        for (const x of [-6.2, (count - 1) * 14 + 6.2])
-          for (const y of [-0.4, 3.2])
-            for (const z of [-5.2, 5.2]) {
-              const projected = new Vector3(x, y, z).project(camera);
-              expect(Math.abs(projected.x)).toBeLessThanOrEqual(0.86001);
-              expect(Math.abs(projected.y)).toBeLessThanOrEqual(0.78001);
-            }
+        const bounds = buildingLayoutBounds(count);
+        expect(fit.target).toEqual([
+          (bounds.minX + bounds.maxX) / 2,
+          0.95,
+          (bounds.minZ + bounds.maxZ) / 2,
+        ]);
+        // Independently project every actual room and the shared building,
+        // rather than restating the camera's grid calculations.
+        const rooms = Array.from({ length: Math.max(1, count) }, (_, index) =>
+          createRoomLayout(`room-${index}`, index, 6, Math.max(1, count)),
+        );
+        for (const frame of [bounds, ...rooms.map((room) => room.bounds)])
+          for (const x of [frame.minX - 0.2, frame.maxX + 0.2])
+            for (const y of [-0.4, 3.2])
+              for (const z of [frame.minZ - 0.2, frame.maxZ + 0.2]) {
+                const projected = new Vector3(x, y, z).project(camera);
+                expect(Math.abs(projected.x)).toBeLessThanOrEqual(0.86001);
+                expect(Math.abs(projected.y)).toBeLessThanOrEqual(0.78001);
+                expect(projected.z).toBeGreaterThan(-1);
+                expect(projected.z).toBeLessThan(1);
+              }
       });
     }
   }

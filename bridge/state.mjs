@@ -1,4 +1,6 @@
 /** Bounded, in-memory observer state. No prompts or logs are persisted to disk. */
+import { randomUUID, createHash } from "node:crypto";
+import path from "node:path";
 export const PROTOCOL_VERSION = 1;
 export const STATES = new Set([
   "idle",
@@ -33,12 +35,102 @@ const iso = (v, fallback) =>
     ? new Date(v).toISOString()
     : fallback;
 
+// Project identity is display metadata, never a replacement session/agent key.
+// Validate without touching the observer's filesystem (it may be another OS).
+function project(value) {
+  if (
+    !isRecord(value) ||
+    !["git", "directory"].includes(value.kind) ||
+    ![
+      "aix",
+      "android",
+      "darwin",
+      "freebsd",
+      "haiku",
+      "linux",
+      "openbsd",
+      "sunos",
+      "win32",
+      "cygwin",
+      "netbsd",
+    ].includes(value.platform) ||
+    typeof value.root !== "string" ||
+    !value.root.length ||
+    value.root.length > 4096 ||
+    /[\u0000-\u001f\u007f]/.test(value.root) ||
+    typeof value.id !== "string" ||
+    !/^project:[a-f0-9]{64}$/.test(value.id)
+  )
+    return null;
+  const windows = value.platform === "win32";
+  const paths = windows ? path.win32 : path.posix;
+  if (!paths.isAbsolute(value.root)) return null;
+  if (
+    windows &&
+    !/^(?:[a-z]:\/|\/\/[^/.][^/]*\/[^/.][^/]*(?:\/|$))/i.test(value.root)
+  )
+    return null;
+  const normalized = windows
+    ? paths.normalize(value.root).replace(/\\/g, "/")
+    : paths.normalize(value.root);
+  const canonical =
+    windows && /^[a-z]:\/$/i.test(normalized)
+      ? normalized
+      : normalized.replace(/\/+$/, "") || "/";
+  if (canonical !== value.root) return null;
+  const fileId = value.filesystemId;
+  if (
+    fileId !== undefined &&
+    (!windows ||
+      typeof fileId !== "string" ||
+      !/^\d{1,24}:[1-9]\d{0,23}$/.test(fileId))
+  )
+    return null;
+  const identityRoot = fileId ? canonical.toLowerCase() : canonical;
+  const id = `project:${createHash("sha256")
+    .update(`${value.platform}\0${identityRoot}${fileId ? `\0${fileId}` : ""}`)
+    .digest("hex")}`;
+  if (value.id !== id) return null;
+  return {
+    id,
+    root: canonical,
+    name: text(paths.basename(canonical) || canonical, 240),
+    kind: value.kind,
+    platform: value.platform,
+    ...(fileId ? { filesystemId: fileId } : {}),
+  };
+}
+
+// Lifecycle is optional protocol-v1 metadata. Never synthesize it from state.
+function lifecycle(value) {
+  if (
+    !isRecord(value) ||
+    value.version !== 1 ||
+    typeof value.eventId !== "string" ||
+    !/^[A-Za-z0-9:_-]{1,160}$/.test(value.eventId) ||
+    !["start", "stop"].includes(value.kind)
+  )
+    return null;
+  const source = value.source;
+  if (!(
+    (source === "pi:session_start" && value.kind === "start") ||
+    (source === "pi:session_shutdown" && value.kind === "stop") ||
+    source === "pi-subagents:child-status"
+  ))
+    return null;
+  const at = iso(value.at, null);
+  return at
+    ? { version: 1, eventId: value.eventId, kind: value.kind, source, at }
+    : null;
+}
+
 export function createStateStore({
   now = Date.now,
   staleAfterMs = 35_000,
   offlineAfterMs = 120_000,
 } = {}) {
   const sessions = new Map();
+  const streamId = randomUUID();
   let updatedAt = new Date(now()).toISOString();
   let revision = 0;
   function upsert(payload) {
@@ -81,6 +173,9 @@ export function createStateStore({
             ? null
             : text(src[key], key === "cwd" ? 1000 : 240);
     }
+    // Omission preserves legacy/partial updates. Explicit null or malformed
+    // metadata clears any previous identity and must not trigger cwd guessing.
+    if (own(src, "project")) session.project = project(src.project);
     session.lastSeen = stamp;
     session.connected = src.connected !== false;
     if (isRecord(payload.capabilities)) {
@@ -135,6 +230,16 @@ export function createStateStore({
       if (STATES.has(raw.state)) agent.state = raw.state;
       for (const key of ["inputTokens", "outputTokens", "cost"])
         if (own(raw, key)) agent[key] = number(raw[key]);
+      if (own(raw, "lifecycle")) {
+        const marker = lifecycle(raw.lifecycle);
+        if (raw.lifecycle === null) delete agent.lifecycle;
+        else if (
+          marker &&
+          (!agent.lifecycle ||
+            Date.parse(marker.at) >= Date.parse(agent.lifecycle.at))
+        )
+          agent.lifecycle = marker;
+      }
       agent.updatedAt = iso(raw.updatedAt, stamp);
       if (Array.isArray(raw.logs))
         agent.logs = raw.logs
@@ -157,6 +262,7 @@ export function createStateStore({
     const time = now();
     return {
       version: PROTOCOL_VERSION,
+      streamId,
       revision,
       updatedAt,
       sessions: [...sessions.values()].map((session) => {

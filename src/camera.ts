@@ -1,28 +1,29 @@
 import { MathUtils, Vector3 } from "three";
+import { buildingLayoutBounds, type RoomBounds } from "./world";
 
 export type CameraAction =
   | { type: "focus"; id: string; serial: number }
   | { type: "zoom-in" | "zoom-out"; serial: number };
-export interface CameraBounds {
-  minX: number;
-  maxX: number;
-  minZ: number;
-  maxZ: number;
-}
+export type CameraBounds = RoomBounds;
 export const CAMERA_MIN_DISTANCE = 5.5;
 export const CAMERA_MIN_POLAR = 0.3;
 export const CAMERA_MAX_POLAR = Math.PI / 2.65;
 export const CAMERA_FOCUS_DISTANCE = 9;
 
 export function visibleRoomCount(count: number) {
-  return Number.isFinite(count) ? MathUtils.clamp(Math.floor(count), 1, 4) : 1;
+  // The visible-project limit belongs to App, not camera geometry. A direct
+  // scene with more sections must still be frameable and navigable.
+  return Number.isFinite(count)
+    ? MathUtils.clamp(Math.floor(count), 1, Number.MAX_SAFE_INTEGER)
+    : 1;
 }
 export function officeCameraBounds(count: number): CameraBounds {
+  const bounds = buildingLayoutBounds(visibleRoomCount(count));
   return {
-    minX: -6.5,
-    maxX: (visibleRoomCount(count) - 1) * 14 + 6.5,
-    minZ: -5.5,
-    maxZ: 6,
+    minX: bounds.minX - 0.5,
+    maxX: bounds.maxX + 0.5,
+    minZ: bounds.minZ - 0.5,
+    maxZ: bounds.maxZ + 1,
   };
 }
 /** Move the eye and target together, preserving orientation and zoom at an edge. */
@@ -31,12 +32,14 @@ export function constrainCameraTarget(
   target: Vector3,
   bounds: CameraBounds,
 ) {
-  const x = MathUtils.clamp(target.x, bounds.minX, bounds.maxX) - target.x;
-  const z = MathUtils.clamp(target.z, bounds.minZ, bounds.maxZ) - target.z;
-  position.x += x;
-  position.z += z;
-  target.x += x;
-  target.z += z;
+  const x = MathUtils.clamp(target.x, bounds.minX, bounds.maxX);
+  const z = MathUtils.clamp(target.z, bounds.minZ, bounds.maxZ);
+  position.x += x - target.x;
+  position.z += z - target.z;
+  // Assign exact bounds; adding a correction can round fractionally outside
+  // a decimal boundary after a large drag.
+  target.x = x;
+  target.z = z;
 }
 /** Frame-rate independent easing, with a cap after a hidden-tab/slow-frame gap. */
 export function cameraEase(delta: number, reduced = false) {
@@ -101,8 +104,12 @@ export function fitOfficeCamera(
   height: number,
   roomCount: number,
 ) {
-  const count = visibleRoomCount(roomCount);
-  const target = new Vector3((count - 1) * 7, 0.95, 0);
+  const bounds = buildingLayoutBounds(visibleRoomCount(roomCount));
+  const target = new Vector3(
+    (bounds.minX + bounds.maxX) / 2,
+    0.95,
+    (bounds.minZ + bounds.maxZ) / 2,
+  );
   const backward = new Vector3(0.47, 0.72, 1).normalize();
   const right = new Vector3(0, 1, 0).cross(backward).normalize();
   const up = backward.clone().cross(right).normalize();
@@ -112,9 +119,9 @@ export function fitOfficeCamera(
     Number.isFinite(value) ? Math.max(1, value) : 1;
   const aspect = safeSize(width) / safeSize(height);
   let distance = 14;
-  for (const x of [-6.2, (count - 1) * 14 + 6.2])
+  for (const x of [bounds.minX - 0.2, bounds.maxX + 0.2])
     for (const y of [-0.4, 3.2])
-      for (const z of [-5.2, 5.2]) {
+      for (const z of [bounds.minZ - 0.2, bounds.maxZ + 0.2]) {
         const relative = new Vector3(x, y, z).sub(target);
         const near = relative.dot(backward);
         distance = Math.max(

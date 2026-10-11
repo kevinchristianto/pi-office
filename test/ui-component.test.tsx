@@ -102,7 +102,9 @@ describe("immersive office controls with WebGL mocked", () => {
     expect(world.props.follow).toBeNull();
     await u.click(screen.getByRole("button", { name: "Return agent to desk" }));
     expect(world.props.command.type).toBe("return");
-    await u.click(screen.getByRole("button", { name: "Choose session room" }));
+    await u.click(
+      screen.getByRole("button", { name: "Choose project office" }),
+    );
     await u.click(screen.getByRole("option", { name: /API migration/ }));
     expect(world.props.sessions).toHaveLength(1);
     expect(world.props.sessions[0].id).toBe("demo-api");

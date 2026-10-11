@@ -67,7 +67,7 @@ test("room switching, modal interruptions and mobile controls stay usable", asyn
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await demo(page);
-  await page.getByRole("button", { name: "Choose session room" }).click();
+  await page.getByRole("button", { name: "Choose project office" }).click();
   await page.getByRole("option", { name: /API migration/ }).click();
   for (let i = 0; i < 2; i++) {
     await page.getByRole("button", { name: "Open guide" }).click();
@@ -150,4 +150,33 @@ test.describe("touch camera controls", () => {
     ).toBe(true);
     await page.screenshot({ path: "screenshots/office-touch-controls.png" });
   });
+});
+
+test("shared workplace survives repeated keyboard interruption", async ({
+  page,
+}) => {
+  await demo(page);
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Open workplace overview" }).click();
+    const panel = page.getByRole("dialog");
+    await expect(panel).toBeVisible();
+    await panel.getByRole("button", { name: /Operations/ }).click();
+    await panel.getByRole("button", { name: /Meeting room/ }).click();
+    await expect(
+      panel.getByText("Website redesign", { exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Open workplace overview" }),
+    ).toBeFocused();
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Open workplace overview" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });

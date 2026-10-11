@@ -19,15 +19,40 @@ import {
   constrainCameraTarget,
   fitOfficeCamera,
   officeCameraBounds,
+  visibleRoomCount,
 } from "../src/camera";
+import { createRoomLayout, buildingLayoutBounds } from "../src/world";
 
 describe("bounded camera math", () => {
   it("clamps the camera and target together without changing the view direction", () => {
     const target = new THREE.Vector3(200, 0.85, -200);
     const position = target.clone().add(new THREE.Vector3(4, 5, 6));
     constrainCameraTarget(position, target, officeCameraBounds(2));
-    expect(target.toArray()).toEqual([20.5, 0.85, -5.5]);
-    expect(position.clone().sub(target).toArray()).toEqual([4, 5, 6]);
+    const bounds = officeCameraBounds(2);
+    expect(target.toArray()).toEqual([bounds.maxX, 0.85, bounds.minZ]);
+    expect(
+      position
+        .clone()
+        .sub(target)
+        .distanceTo(new THREE.Vector3(4, 5, 6)),
+    ).toBeLessThan(1e-10);
+  });
+  it("uses the shared compact footprint for empty, partial, full and larger grids", () => {
+    for (const count of [0, 1, 2, 3, 4, 9, 25, 100]) {
+      const world = buildingLayoutBounds(count);
+      expect(officeCameraBounds(count)).toEqual({
+        minX: world.minX - 0.5,
+        maxX: world.maxX + 0.5,
+        minZ: world.minZ - 0.5,
+        maxZ: world.maxZ + 1,
+      });
+      expect(visibleRoomCount(count)).toBe(Math.max(1, count));
+    }
+    const four = officeCameraBounds(4);
+    expect(four.maxX - four.minX).toBeLessThan(30);
+    expect(four.maxZ - four.minZ).toBeLessThan(40);
+    expect(officeCameraBounds(9)).not.toEqual(four);
+    expect(fitOfficeCamera(800, 600, 0)).toEqual(fitOfficeCamera(800, 600, 1));
   });
   it("normalizes diagonal pan, cancels opposites, and bounds hidden-tab delta", () => {
     const backward = new THREE.Vector3(3, 4, 5);
@@ -236,13 +261,108 @@ describe("camera rig with real R3F and OrbitControls (renderer stubbed)", () => 
     await render();
     await tick(150);
     const distance = camera().position.distanceTo(controls().target);
-    expect(distance).toBeGreaterThan(180);
+    expect(distance).toBeCloseTo(fitOfficeCamera(390, 844, 4).distance);
+    // The old horizontal strip needed more than 180 units. The full compact
+    // building, including shared amenities, remains a much closer fit.
+    expect(distance).toBeLessThan(150);
     expect((state().scene.fog as THREE.Fog).near).toBeGreaterThan(
       distance + 15,
     );
     expect((camera() as THREE.PerspectiveCamera).far).toBeGreaterThan(
       distance + 80,
     );
+  });
+  it.each([0, 1, 2, 3, 4, 9, 25])(
+    "fits every physical grid corner with %s sections in the real controller",
+    async (count) => {
+      await act(async () => state().setSize(390, 844));
+      props = { ...props, count, reset: 1 };
+      await render();
+      await tick(180);
+      camera().updateMatrixWorld();
+      const fit = fitOfficeCamera(390, 844, count);
+      expect(
+        camera().position.distanceTo(new THREE.Vector3(...fit.position)),
+      ).toBeLessThan(0.001);
+      expect(
+        controls().target.distanceTo(new THREE.Vector3(...fit.target)),
+      ).toBeLessThan(0.001);
+      const frames = [
+        buildingLayoutBounds(count),
+        ...Array.from(
+          { length: Math.max(1, count) },
+          (_, index) =>
+            createRoomLayout(`grid-${index}`, index, 6, Math.max(1, count))
+              .bounds,
+        ),
+      ];
+      for (const bounds of frames) {
+        for (const x of [bounds.minX - 0.2, bounds.maxX + 0.2])
+          for (const y of [-0.4, 3.2])
+            for (const z of [bounds.minZ - 0.2, bounds.maxZ + 0.2]) {
+              const point = new THREE.Vector3(x, y, z).project(camera());
+              expect(Math.abs(point.x)).toBeLessThanOrEqual(0.86001);
+              expect(Math.abs(point.y)).toBeLessThanOrEqual(0.78001);
+              expect(point.z).toBeGreaterThan(-1);
+              expect(point.z).toBeLessThan(1);
+            }
+      }
+    },
+  );
+  it("expands zoom reach after grid growth and resize without moving the view", async () => {
+    const before = pose();
+    await act(async () => state().setSize(320, 1200));
+    props = { ...props, count: 9 };
+    await render();
+    await tick(10);
+    expect(pose()).toEqual(before);
+    expect(controls().maxDistance).toBeGreaterThanOrEqual(
+      fitOfficeCamera(320, 1200, 9).distance * 1.6,
+    );
+    for (let serial = 1; serial <= 15; serial++) {
+      props = { ...props, cameraAction: { type: "zoom-out", serial } };
+      await render();
+    }
+    await tick(180);
+    expect(camera().position.distanceTo(controls().target)).toBeCloseTo(
+      controls().maxDistance,
+    );
+  });
+  it("focuses and follows a resident in a far grid row, then tightens Fit bounds", async () => {
+    const room = createRoomLayout("far-project", 8, 6, 9);
+    const desk = room.desks[5];
+    props.positions.current.set(
+      "nova",
+      new THREE.Vector3(desk.seat[0], 0, desk.seat[1]),
+    );
+    props = {
+      ...props,
+      count: 9,
+      cameraAction: { type: "focus", id: "nova", serial: 1 },
+    };
+    await render();
+    await tick(160);
+    expect(controls().target.x).toBeCloseTo(desk.seat[0]);
+    expect(controls().target.z).toBeCloseTo(desk.seat[1]);
+    expect(camera().position.distanceTo(controls().target)).toBeCloseTo(9);
+    props = { ...props, follow: "nova" };
+    await render();
+    props.positions.current.set(
+      "nova",
+      new THREE.Vector3(desk.lounge[0], 0, desk.lounge[1]),
+    );
+    await tick(160);
+    expect(controls().target.x).toBeCloseTo(desk.lounge[0]);
+    expect(controls().target.z).toBeCloseTo(desk.lounge[1]);
+    props = { ...props, follow: null, count: 1, reset: 1 };
+    await render();
+    await tick(180);
+    controls().target.set(500, 0.95, 500);
+    camera().position.set(504, 5.95, 506);
+    await tick();
+    const bounds = officeCameraBounds(1);
+    expect(controls().target.x).toBe(bounds.maxX);
+    expect(controls().target.z).toBe(bounds.maxZ);
   });
   it("scopes keys to canvas, prevents page scroll, and clears held keys on blur", async () => {
     const start = pose();
@@ -268,14 +388,18 @@ describe("camera rig with real R3F and OrbitControls (renderer stubbed)", () => 
     canvas.focus();
     key("d");
     await tick(1800);
-    expect(controls().target.x).toBeLessThanOrEqual(20.5);
-    expect(controls().target.z).toBeGreaterThanOrEqual(-5.5);
+    expect(controls().target.x).toBeLessThanOrEqual(officeCameraBounds(2).maxX);
+    expect(controls().target.z).toBeGreaterThanOrEqual(
+      officeCameraBounds(2).minZ,
+    );
     window.dispatchEvent(new KeyboardEvent("keyup", { key: "d" }));
     controls().target.set(500, 0.95, -100);
     camera().position.set(504, 5.95, -94);
     await tick(5);
-    expect(controls().target.x).toBeLessThanOrEqual(20.5);
-    expect(controls().target.z).toBeGreaterThanOrEqual(-5.5);
+    expect(controls().target.x).toBeLessThanOrEqual(officeCameraBounds(2).maxX);
+    expect(controls().target.z).toBeGreaterThanOrEqual(
+      officeCameraBounds(2).minZ,
+    );
     expect(
       camera()
         .position.clone()
@@ -461,10 +585,18 @@ describe("camera rig with real R3F and OrbitControls (renderer stubbed)", () => 
     pointer("pointercancel", -100000, 100000, 2);
     for (let i = 0; i < 30; i++) {
       await tick();
-      expect(controls().target.x).toBeGreaterThanOrEqual(-6.5);
-      expect(controls().target.x).toBeLessThanOrEqual(20.5);
-      expect(controls().target.z).toBeGreaterThanOrEqual(-5.5);
-      expect(controls().target.z).toBeLessThanOrEqual(6);
+      expect(controls().target.x).toBeGreaterThanOrEqual(
+        officeCameraBounds(2).minX,
+      );
+      expect(controls().target.x).toBeLessThanOrEqual(
+        officeCameraBounds(2).maxX,
+      );
+      expect(controls().target.z).toBeGreaterThanOrEqual(
+        officeCameraBounds(2).minZ,
+      );
+      expect(controls().target.z).toBeLessThanOrEqual(
+        officeCameraBounds(2).maxZ,
+      );
     }
     const target = controls().target.clone();
     pointer("pointermove", 400, 200, 2, document);

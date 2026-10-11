@@ -1,0 +1,40 @@
+{
+  "passed": true,
+  "frameCount": 190,
+  "fps": 12,
+  "durationSeconds": 15.833333333333334,
+  "routeLengthEachWay": 11.799782899489365,
+  "speedUnitsPerSecond": 1.8,
+  "maximumPositionError": 4.789658478724684e-07,
+  "maximumYawErrorRadians": 1.1237767738592197e-07,
+  "maximumHeadingStepRadians": 0.5235987755982996,
+  "headingSpeedLimitRadiansPerSecond": 6.283185307179586,
+  "continuousHeadingMatchesController": true,
+  "walkGaitRate": 1.5,
+  "clipClockMatchesRuntimeRate": true,
+  "originalGlbCount": 16,
+  "originalGlbHashesMatch": true,
+  "rootScaleConstant": [
+    1,
+    1,
+    1
+  ],
+  "rootScaleKeyframes": false,
+  "visibilityMatchesController": true,
+  "yawMatchesController": true,
+  "sourceHashesMatch": true,
+  "geometryHashMatches": true,
+  "crossfadeSeconds": 0.2,
+  "reviewDisclosure": "Blender visualization of the shared runtime natural-navigation route/controller at actual brisk speed, with original authored GLB clips and true pose blending. This is not a browser capture.",
+  "presentationPostprocess": "Gentle ffmpeg hqdn3d=1:1:2:2 render grain reduction only.",
+  "video": {
+    "filename": "blender-corporate-natural-walking-lifecycle.mp4",
+    "codec": "h264",
+    "width": 960,
+    "height": 720,
+    "decodedFrameCount": 190,
+    "fullDecodePassed": true,
+    "sha256": "47e9d5b744affac100da6c4ad75ad007e4b5493bda6ef6d4b6eb1884c841f9bf",
+    "bytes": 494581
+  }
+}

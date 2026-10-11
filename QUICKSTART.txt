@@ -1,42 +1,54 @@
 PI OFFICE · WINDOWS QUICK START
 
-1. Install Node.js 24 LTS from https://nodejs.org/ if needed.
-2. Extract the pi-office folder or clone the repository somewhere private.
-   For a Git clone, run npm ci and npm run build in that folder first.
+1. Install Node.js 22.20 or newer from https://nodejs.org/ if needed.
+   Node.js 24 LTS is recommended. Keep Pi installed using its own instructions.
+2. Extract or clone Pi Office into a private folder owned by your Windows account.
+   For a source/Git checkout, open a terminal in that folder and run:
+     npm ci
+     npm run build
+   A release ZIP that includes dist/index.html does not need npm install to run.
 3. Double-click START-OFFICE.cmd. Keep its window open.
-4. Open http://127.0.0.1:4317 in your browser.
+4. Open the local URL it prints, normally http://127.0.0.1:4317.
 5. Choose Explore demo to look around, or connect a real Pi session:
+   Open PowerShell in your PROJECT folder and run:
+     & 'C:\path\to\pi-office\CONNECT-PI.cmd'
+   Replace the path with your app folder. Repeat for each participating Pi session.
+   The helper preserves your project directory and accepts extra Pi arguments.
 
-   Open PowerShell in your project folder and run:
-   & 'C:\path\to\pi-office\CONNECT-PI.cmd'
+The helpers validate Node and required app files. They never install software,
+edit Pi settings, kill Pi processes or copy the observer into another location.
+CONNECT-PI reads the existing token file through the observer without printing
+or copying its contents into the command line. Keep the app folder private.
 
-   Replace the path with your extracted app folder. Do this for each
-   Pi session you want to see. Pi itself must already be installed.
+CUSTOM PORT OR TOKEN FILE
+Set matching environment variables in the bridge and Pi PowerShell windows:
+  $env:PI_OFFICE_PORT = '4318'
+  $env:PI_OFFICE_TOKEN_FILE = 'C:\private\pi-office-token'
+Use an absolute token-file path. Its parent folder must already exist.
+PI_OFFICE_URL, if set, overrides the URL chosen by CONNECT-PI.cmd.
+PI_OFFICE_TOKEN, if set, overrides file-based credentials for both programs.
+Never put a credential in a URL, screenshot, shared folder or source control.
+Use a fixed port for normal use; port 0 is intended only for automated tests.
 
-A release ZIP with prebuilt dist/ does not need npm install to run.
-A source/Git checkout needs npm ci and npm run build first.
-This is a local, view-only MVP. It never controls your agents.
-Close the bridge window / press Ctrl+C to stop the office; Pi keeps working.
+STOP / RESTART / UPGRADE
+Press Ctrl+C in the bridge window. Office connections receive a one-second
+grace period before remaining sockets close; Pi keeps working. Repeat signals
+are safe. Restarting clears in-memory observation history but keeps the token.
+Connected observers retry and republish available state. See UPDATING.md.
 
-WHAT'S VERIFIED
-Production build, frontend/observer typechecks, 52 backend/model/animation
-tests and 104 UI/camera/movement/geometry regressions passed in Linux.
-All eight resident variants retain eleven evaluated animation clips.
-Hand checks cover thumb/index anatomy, typing/wave palms and wrist joins.
-Stable agent IDs choose a variant; variants may repeat in a larger roster.
+CONNECT AN ALREADY-OPEN SESSION
+README.md describes manually adding the observer to Pi's existing extensions
+array and using /reload when work is idle. Back up the settings first and
+preserve existing entries. This is optional; the helpers never do it for you.
+A session that has not loaded the observer cannot appear in the office.
 
-WHAT STILL NEEDS A LOCAL SMOKE TEST
-Real Windows + Pi operation, WebGL visuals and browser gestures have not
-been verified here. The separate cloud browser could not reach the local app.
-A fresh npm ci still needs verification on the target computer.
-Blender asset previews are included and are not browser screenshots.
-See TESTING.md for the complete test record.
+VALIDATION LIMITS
+See TESTING.md for checks run against this release and remaining limitations.
+Linux tests do not establish real Windows/Pi compatibility or browser GPU
+performance. Run the documented local smoke check on your target computer.
+Blender previews are asset renders, not screenshots of the running browser app.
+Some child tool/cost/outcome fields are not exposed by the fleet API; missing
+information remains unavailable rather than being guessed.
 
-Some child tool/cost/outcome fields are not exposed by the current
-pi-subagents fleet API. Missing information is shown as unavailable.
-Only sessions explicitly launched with the observer can appear.
-
-Prefer using an already-open Pi session? README.md explains the one-time
-global extension setting and /reload alternative, without CONNECT-PI.cmd.
-
-README.md contains full setup, architecture, limits and troubleshooting.
+The office is a local, view-only observer. Visual interactions never control Pi.
+README.md contains the full setup, architecture, limits and troubleshooting.

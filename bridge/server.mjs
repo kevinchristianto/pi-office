@@ -30,7 +30,7 @@ export async function getToken({
   }
   const read = async () => {
     const stat = await fs.lstat(tokenFile);
-    if (!stat.isFile() || stat.isSymbolicLink())
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 514)
       throw new Error("Token path must be a regular local file");
     if (process.platform !== "win32" && stat.mode & 0o077)
       await fs.chmod(tokenFile, 0o600);
@@ -63,9 +63,26 @@ export async function createBridge({
   distDir = path.join(root, "dist"),
   store = createStateStore(),
   heartbeatMs = 10_000,
+  bodyTimeoutMs = 10_000,
+  shutdownGraceMs = 1_000,
 } = {}) {
+  if (!Number.isInteger(port) || port < 0 || port > 65535)
+    throw new Error("PI_OFFICE_PORT must be an integer from 0 to 65535");
+  for (const [name, value] of Object.entries({
+    heartbeatMs,
+    bodyTimeoutMs,
+    shutdownGraceMs,
+  })) {
+    if (!Number.isInteger(value) || value < 1 || value > 2_147_483_647)
+      throw new Error(`${name} must be a positive timer interval`);
+  }
+  distDir = path.resolve(distDir);
   const secret = await getToken({ token, tokenFile });
   const clients = new Set();
+  const sockets = new Set();
+  let closing;
+  let listening;
+  let cancelListen;
   let listeningPort = port;
   let lastProjection = "";
   const respond = (res, code, value) => {
@@ -82,44 +99,69 @@ export async function createBridge({
     const b = Buffer.from(secret);
     return a.length === b.length && timingSafeEqual(a, b);
   };
+  const writeEvent = (res, value) => {
+    if (
+      res.destroyed ||
+      res.writableEnded ||
+      res.writableLength > 1024 * 1024
+    ) {
+      clients.delete(res);
+      res.destroy();
+      return;
+    }
+    res.write(value);
+  };
   const broadcast = (force = false) => {
     const data = JSON.stringify(store.snapshot());
     if (!force && data === lastProjection) return;
     lastProjection = data;
-    for (const res of clients) {
-      if (res.writableLength > 1024 * 1024) {
-        res.destroy();
-        clients.delete(res);
-        continue;
-      }
-      res.write(`event: snapshot\ndata: ${data}\n\n`);
-    }
+    for (const res of clients)
+      writeEvent(res, `event: snapshot\ndata: ${data}\n\n`);
   };
-  async function body(req) {
-    const chunks = [];
-    let count = 0;
-    if (Number(req.headers["content-length"]) > LIMITS.payloadBytes) {
-      const err = new Error("Payload too large");
-      err.status = 413;
-      throw err;
-    }
-    for await (const chunk of req) {
-      count += chunk.length;
-      if (count > LIMITS.payloadBytes) {
-        const err = new Error("Payload too large");
-        err.status = 413;
-        throw err;
-      }
-      chunks.push(chunk);
-    }
-    try {
-      return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    } catch {
-      const err = new Error("Invalid JSON");
-      err.status = 400;
-      throw err;
-    }
+  function body(req) {
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      let count = 0;
+      const cleanup = () => {
+        clearTimeout(deadline);
+        req.off("data", onData);
+        req.off("end", onEnd);
+        req.off("error", onError);
+        req.off("aborted", onAborted);
+      };
+      const fail = (message, status) => {
+        cleanup();
+        req.pause();
+        reject(Object.assign(new Error(message), { status }));
+      };
+      const onError = () => fail("Request interrupted", 400);
+      const onAborted = () => fail("Request interrupted", 400);
+      const onData = (chunk) => {
+        count += chunk.length;
+        if (count > LIMITS.payloadBytes) return fail("Payload too large", 413);
+        chunks.push(chunk);
+      };
+      const onEnd = () => {
+        cleanup();
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        } catch {
+          reject(Object.assign(new Error("Invalid JSON"), { status: 400 }));
+        }
+      };
+      const deadline = setTimeout(
+        () => fail("Request body timed out", 408),
+        bodyTimeoutMs,
+      );
+      req.on("error", onError);
+      req.on("aborted", onAborted);
+      if (Number(req.headers["content-length"]) > LIMITS.payloadBytes)
+        return fail("Payload too large", 413);
+      req.on("data", onData);
+      req.on("end", onEnd);
+    });
   }
+
   const server = http.createServer(async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -130,6 +172,10 @@ export async function createBridge({
       "Content-Security-Policy",
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
     );
+    if (closing) {
+      res.setHeader("Connection", "close");
+      return respond(res, 503, { error: "Local bridge is stopping" });
+    }
     const host = req.headers.host;
     const allowedHosts = new Set([
       `127.0.0.1:${listeningPort}`,
@@ -175,7 +221,7 @@ export async function createBridge({
           `retry: 2500\nevent: snapshot\ndata: ${JSON.stringify(store.snapshot())}\n\n`,
         );
         clients.add(res);
-        req.on("close", () => clients.delete(res));
+        res.on("close", () => clients.delete(res));
         return;
       }
       if (
@@ -264,43 +310,73 @@ export async function createBridge({
       });
       res.end(req.method === "HEAD" ? undefined : bytes);
     } catch (error) {
-      if (!res.headersSent && !res.destroyed)
+      if (!res.headersSent && !res.destroyed) {
+        if (!req.complete) res.setHeader("Connection", "close");
         respond(res, error.status || 500, {
           error: error.status ? error.message : "Local bridge request failed",
         });
-      else res.destroy();
+      } else res.destroy();
     }
   });
-  server.requestTimeout = 10_000;
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+    if (closing) socket.destroy();
+  });
+  server.requestTimeout = bodyTimeoutMs;
   server.headersTimeout = 10_000;
   server.keepAliveTimeout = 5_000;
   server.maxHeadersCount = 40;
   const timer = setInterval(() => {
     broadcast();
-    for (const res of clients) res.write(": heartbeat\n\n");
+    for (const res of clients) writeEvent(res, ": heartbeat\n\n");
   }, heartbeatMs);
   timer.unref();
   server.on("close", () => clearInterval(timer));
   return {
     server,
     store,
-    async listen() {
-      await new Promise((resolve, reject) => {
-        server.once("error", reject);
+    listen() {
+      if (closing)
+        return Promise.reject(new Error("Local bridge is already stopping"));
+      if (listening) return listening;
+      listening = new Promise((resolve, reject) => {
+        const fail = (error) => {
+          server.off("error", fail);
+          cancelListen = undefined;
+          reject(error);
+        };
+        cancelListen = () =>
+          fail(new Error("Local bridge stopped before listening"));
+        server.once("error", fail);
         server.listen(port, "127.0.0.1", () => {
-          server.off("error", reject);
+          server.off("error", fail);
+          cancelListen = undefined;
           listeningPort = server.address().port;
-          resolve();
+          resolve(`http://127.0.0.1:${listeningPort}`);
         });
       });
-      return `http://127.0.0.1:${listeningPort}`;
+      return listening;
     },
-    async close() {
-      clearInterval(timer);
-      for (const res of clients) res.end();
-      clients.clear();
-      server.closeIdleConnections();
-      await new Promise((resolve) => server.close(resolve));
+    close() {
+      if (closing) return closing;
+      // Bound the drain even when a client has sent only part of its request.
+      // These are bridge HTTP sockets, never Pi processes or sessions.
+      closing = new Promise((resolve) => {
+        clearInterval(timer);
+        cancelListen?.();
+        const deadline = setTimeout(() => {
+          for (const socket of sockets) socket.destroy();
+        }, shutdownGraceMs);
+        for (const res of clients) res.end();
+        clients.clear();
+        server.close(() => {
+          clearTimeout(deadline);
+          resolve();
+        });
+        server.closeIdleConnections();
+      });
+      return closing;
     },
   };
 }
@@ -316,11 +392,20 @@ if (
     console.log(
       "Observer credential is available through PI_OFFICE_TOKEN or the local token file.",
     );
-    for (const signal of ["SIGINT", "SIGTERM"])
-      process.once(
-        signal,
-        () => void bridge.close().then(() => process.exit(0)),
+    let stopping = false;
+    const stop = (signal) => {
+      if (stopping) return;
+      stopping = true;
+      console.log(
+        `Pi Office received ${signal}; closing local observer connections. Pi sessions keep running.`,
       );
+      void bridge.close().then(() => {
+        console.log("Pi Office stopped.");
+        process.exitCode = 0;
+      });
+    };
+    for (const signal of ["SIGINT", "SIGTERM"])
+      process.on(signal, () => stop(signal));
   } catch (error) {
     console.error(`Pi Office could not start: ${error.message}`);
     process.exitCode = 1;

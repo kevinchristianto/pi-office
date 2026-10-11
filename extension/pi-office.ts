@@ -8,6 +8,142 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID, createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+
+export type ProjectIdentity = {
+  id: string;
+  root: string;
+  name: string;
+  kind: "git" | "directory";
+  platform: NodeJS.Platform;
+  filesystemId?: string;
+};
+
+// Normalize only paths belonging to the observer's platform. A POSIX filename
+// can contain a backslash, and a drive-relative Windows path is not an identity.
+// Exported pure helpers also permit Windows fixtures without claiming a native
+// Windows filesystem test. Live inputs are always realpath-resolved first.
+export function normalizeProjectRoot(
+  root: unknown,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  if (
+    typeof root !== "string" ||
+    !root.length ||
+    root.length > 4096 ||
+    /[\u0000-\u001f\u007f]/.test(root)
+  )
+    return null;
+  if (platform === "win32") {
+    const windowsRoot = root
+      .replace(/^\\\\\?\\UNC\\/i, "\\\\")
+      .replace(/^\\\\\?\\(?=[a-z]:\\)/i, "");
+    if (
+      !/^(?:[a-z]:[\\/]|[\\/]{2}[^\\/.][^\\/]*[\\/][^\\/.][^\\/]*(?:[\\/]|$))/i.test(
+        windowsRoot,
+      )
+    )
+      return null;
+    const normalized = path.win32.normalize(windowsRoot).replace(/\\/g, "/");
+    return /^[a-z]:\/$/i.test(normalized)
+      ? normalized
+      : normalized.replace(/\/+$/, "");
+  }
+  if (!path.posix.isAbsolute(root)) return null;
+  return path.posix.normalize(root).replace(/\/+$/, "") || "/";
+}
+
+export function projectMetadata(
+  root: unknown,
+  kind: ProjectIdentity["kind"],
+  platform: NodeJS.Platform = process.platform,
+  filesystemId?: string,
+): ProjectIdentity | null {
+  const canonical = normalizeProjectRoot(root, platform);
+  if (!canonical) return null;
+  // Windows supports case-sensitive directories too. Fold case only with a
+  // filesystem discriminator: same-fold names with different inodes stay apart.
+  // If it is unavailable, prefer under-grouping to collapsing distinct projects.
+  const fileId =
+    platform === "win32" &&
+    typeof filesystemId === "string" &&
+    /^\d{1,24}:[1-9]\d{0,23}$/.test(filesystemId)
+      ? filesystemId
+      : undefined;
+  const identityRoot = fileId ? canonical.toLowerCase() : canonical;
+  return {
+    id: `project:${createHash("sha256")
+      .update(`${platform}\0${identityRoot}${fileId ? `\0${fileId}` : ""}`)
+      .digest("hex")}`,
+    root: canonical,
+    name:
+      (platform === "win32" ? path.win32 : path.posix).basename(canonical) ||
+      canonical,
+    kind,
+    platform,
+    ...(fileId ? { filesystemId: fileId } : {}),
+  };
+}
+
+async function canonicalDirectory(value: unknown): Promise<string | null> {
+  if (!normalizeProjectRoot(value)) return null;
+  try {
+    const root = await fs.realpath(value as string);
+    return (await fs.stat(root)).isDirectory()
+      ? normalizeProjectRoot(root)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One read-only, bounded Git lookup per session start, never per heartbeat.
+ * No hooks, shell, task commands, settings writes or safe.directory overrides.
+ * Missing/unsafe Git falls back to the exact canonical cwd, never its basename.
+ */
+export async function resolveProjectMetadata(
+  cwd: unknown,
+): Promise<ProjectIdentity | null> {
+  const directory = await canonicalDirectory(cwd);
+  if (!directory) return null;
+  const env = { ...process.env };
+  // Parent shells may carry another repository's GIT_DIR/GIT_WORK_TREE or
+  // config injection. Discover this cwd using Git's ordinary trust checks.
+  for (const key of Object.keys(env)) if (/^GIT_/i.test(key)) delete env[key];
+  env.GIT_OPTIONAL_LOCKS = "0";
+  env.GIT_TERMINAL_PROMPT = "0";
+  const topLevel = await new Promise<string | null>((resolve) => {
+    execFile(
+      "git",
+      ["-C", directory, "rev-parse", "--show-toplevel"],
+      {
+        env,
+        encoding: "utf8",
+        timeout: 1000,
+        killSignal: "SIGKILL",
+        maxBuffer: 64 * 1024,
+        windowsHide: true,
+      },
+      (error, stdout) => resolve(error ? null : stdout.replace(/\r?\n$/, "")),
+    );
+  });
+  const gitRoot = topLevel ? await canonicalDirectory(topLevel) : null;
+  const root = gitRoot || directory;
+  let filesystemId: string | undefined;
+  if (process.platform === "win32") {
+    try {
+      const stat = await fs.stat(root, { bigint: true });
+      if (stat.ino > 0n && stat.dev >= 0n)
+        filesystemId = `${stat.dev}:${stat.ino}`;
+    } catch {}
+  }
+  return projectMetadata(
+    root,
+    gitRoot ? "git" : "directory",
+    process.platform,
+    filesystemId,
+  );
+}
 
 type Data = Record<string, any>;
 type Handler = (event: Data, context: Data) => void | Promise<void>;
@@ -19,6 +155,14 @@ type Pi = {
     emit: (name: string, data: unknown) => void;
   };
   getSessionName?: () => string | undefined;
+};
+type LifecycleMarker = {
+  version: 1;
+  eventId: string;
+  kind: "start" | "stop";
+  source:
+    "pi:session_start" | "pi:session_shutdown" | "pi-subagents:child-status";
+  at: string;
 };
 type Agent = {
   id: string;
@@ -33,6 +177,7 @@ type Agent = {
   cost: number | null;
   updatedAt: string;
   logs: { time: string; level: string; message: string }[];
+  lifecycle: LifecycleMarker | null;
 };
 const record = (v: unknown): v is Data =>
   v !== null && typeof v === "object" && !Array.isArray(v);
@@ -122,6 +267,7 @@ export default function piOffice(pi: Pi) {
   const busCleanup = new Set<() => void>();
   const pendingRpc = new Set<() => void>();
   let seenMessages = new WeakSet<object>();
+  let observingSince = 0;
   function root() {
     return session ? agents.get(`${session.id}:main`) : undefined;
   }
@@ -156,11 +302,38 @@ export default function piOffice(pi: Pi) {
         cost: null,
         updatedAt: timestamp(),
         logs: [],
+        lifecycle: null,
       };
       agents.set(id, row);
     }
     Object.assign(row, patch, { updatedAt: timestamp() });
     return row;
+  }
+  // A display state or a missing fleet row is not evidence of birth/death.
+  // Only exact lifecycle observations can mint a marker. The last marker per
+  // bounded agent row survives coalesced snapshots without creating an event log.
+  function markLifecycle(
+    row: Agent,
+    kind: LifecycleMarker["kind"],
+    source: LifecycleMarker["source"],
+    at = Date.now(),
+  ) {
+    const previous = row.lifecycle;
+    const previousAt = previous ? Date.parse(previous.at) : -Infinity;
+    if (
+      previous &&
+      (previous.kind === kind ||
+        at < previousAt ||
+        (at === previousAt && kind === "start"))
+    )
+      return;
+    row.lifecycle = {
+      version: 1,
+      eventId: randomUUID(),
+      kind,
+      source,
+      at: new Date(at).toISOString(),
+    };
   }
   function changeMain(patch: Data, message?: string, level?: string) {
     const row = agent("main", patch);
@@ -522,6 +695,32 @@ export default function piOffice(pi: Pi) {
           model: modelName(event.model),
           tool: null,
         });
+        if (
+          row &&
+          kind === "child" &&
+          rpcReady &&
+          capabilities.childStatus &&
+          event.type === "subagent.child-status" &&
+          typeof event.runId === "string" &&
+          event.runId.length > 0 &&
+          typeof event.childId === "string" &&
+          event.childId.length > 0 &&
+          ["started", "stopped"].includes(event.status)
+        ) {
+          const at =
+            typeof event.ts === "number" || typeof event.ts === "string"
+              ? new Date(event.ts).getTime()
+              : NaN;
+          // Child hints can be replayed. Never animate restored history, malformed
+          // timestamps, future events, or older/duplicate transitions for this ID.
+          if (Number.isFinite(at) && at >= observingSince && at <= Date.now())
+            markLifecycle(
+              row,
+              event.status === "started" ? "start" : "stop",
+              "pi-subagents:child-status",
+              at,
+            );
+        }
         if (row)
           addLog(
             row,
@@ -577,10 +776,12 @@ export default function piOffice(pi: Pi) {
       /* Older Pi versions can omit newer events. */
     }
   }
-  on("session_start", async (_event, ctx) => {
+  on("session_start", async (event, ctx) => {
     await shutdown();
     generation++;
+    const startGeneration = generation;
     stopped = false;
+    observingSince = Date.now();
     context = ctx;
     agents.clear();
     seenMessages = new WeakSet<object>();
@@ -639,6 +840,8 @@ export default function piOffice(pi: Pi) {
     } catch {
       id = randomUUID();
     }
+    const project = await resolveProjectMetadata(ctx.cwd);
+    if (stopped || startGeneration !== generation) return;
     session = {
       id,
       name:
@@ -646,6 +849,7 @@ export default function piOffice(pi: Pi) {
         path.basename(ctx.cwd || "") ||
         "Pi session",
       cwd: str(ctx.cwd, 1000),
+      project,
       model: modelName(ctx.model),
       connected: true,
     };
@@ -655,7 +859,12 @@ export default function piOffice(pi: Pi) {
       state: ctx.isIdle?.() === false ? "thinking" : "idle",
       model: session.model,
     });
-    if (main) addLog(main, "Observer connected to Pi session.");
+    if (main) {
+      addLog(main, "Observer connected to Pi session.");
+      // Older Pi versions without a reason, /reload, and /resume are baselines.
+      if (["startup", "new", "fork"].includes(event.reason))
+        markLifecycle(main, "start", "pi:session_start");
+    }
     try {
       for (const entry of (ctx.sessionManager?.getBranch?.() || []).slice(
         -5000,
@@ -680,7 +889,14 @@ export default function piOffice(pi: Pi) {
     schedule();
     void refresh();
   });
-  on("session_shutdown", shutdown);
+  on("session_shutdown", (event) => {
+    // Preserve shutdown behavior; record only an explicit quit, never inferred
+    // disconnects, session replacement, reload, or the internal cleanup call.
+    const main = root();
+    if (!stopped && main && event.reason === "quit")
+      markLifecycle(main, "stop", "pi:session_shutdown");
+    return shutdown();
+  });
   on("session_info_changed", (e) => {
     if (session) {
       session.name = str(e.name) || "Pi session";

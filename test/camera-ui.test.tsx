@@ -20,6 +20,7 @@ vi.mock("../src/useOfficeData", () => ({
   }),
 }));
 import App from "../src/App";
+import { visualAgentId } from "../src/projectProjection";
 beforeEach(() => {
   capture.sessions = [];
 });
@@ -90,13 +91,13 @@ describe("camera controls UI", () => {
     await user.click(screen.getByRole("button", { name: /Nova/ }));
     expect(capture.props.reset).toBe(demoReset);
     await user.click(
-      screen.getByRole("button", { name: "Choose session room" }),
+      screen.getByRole("button", { name: "Choose project office" }),
     );
     await user.click(screen.getByRole("option", { name: /API migration/ }));
     expect(capture.props.reset).toBeGreaterThan(demoReset);
     const roomReset = capture.props.reset;
     await user.click(
-      screen.getByRole("button", { name: "Choose session room" }),
+      screen.getByRole("button", { name: "Choose project office" }),
     );
     await user.click(screen.getByRole("option", { name: /Whole office/ }));
     expect(capture.props.reset).toBeGreaterThan(roomReset);
@@ -126,7 +127,7 @@ describe("camera controls UI", () => {
     ];
     mounted.rerender(<App />);
     expect(capture.props.reset).toBe(before);
-    expect(capture.props.follow).toBe("live-agent");
+    expect(capture.props.follow).toBe(visualAgentId("work", "live-agent"));
     capture.sessions = [{ id: "new", name: "New project", agents: [] }];
     mounted.rerender(<App />);
     expect(capture.props.reset).toBe(before);

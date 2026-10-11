@@ -45,6 +45,40 @@ Portrait assembly requires Pillow. The Blender model/export/render scripts need 
 
 `build_assets.py` below is the legacy room/furniture authoring script and also writes the historical single character. Always run `build_residents.py` afterwards to restore the current numbered collection and compatibility alias. Do not use a historical character preview as the current resident review.
 
+## Corporate workplace and actual-speed lifecycle review
+
+`export_corporate_layout.mjs` transpiles the actual runtime geometry, entrance, collision-aware natural navigation, route, heading and lifecycle helpers. It writes `corporate-layout.json` with source hashes, hashes of all 16 unchanged original GLBs, one/four-project scene descriptions, and a 60 Hz simulation of the normal walking controller sampled at 12 fps. No public GLB or historical Blender source is changed.
+
+`render_corporate_workplace.py` imports the original resident/furniture GLBs, applies the exported coordinates and facing rotations, and renders the corporate layout. The walking review uses the original Walk, Work and Idle transforms with a genuine 0.2-second pose crossfade. The shared runtime `animationPlaybackRate` advances the Walk clip at 1.5×, proportional to the brisk 1.8-unit/second travel speed; Work, Idle and blend timing remain on their normal clock. Root heading uses the runtime `stepHeading` limit of 2π radians/second, including the seat approach and departure turn. The moving resident stays full size, with no opacity or scale arrival effect. Other residents are held at representative authored poses for context. Studio lighting, camera framing and physical render labels are presentation choices, so this is a Blender visualization, not browser/event-stream capture.
+
+The current normal demonstration is 190 frames / 15.8333 seconds at 960×720 and 12 fps. It follows the complete 11.7998-unit collision-checked entrance-to-desk route and its reverse at the runtime's 1.8 units/second. Compared with the earlier 16.01-unit review route at 1.2 units/second, the path is 26.3% shorter and one-way travel is 50.9% quicker: 6.56 seconds instead of 13.34 seconds. The shared controller provides the 0.32-second seated/standing phases; the fixture requests departure after 1.5 seconds of seated work. An arrival waiting for admission is hidden offsite; departure disappears only after reaching the exterior endpoint. The exporter records all phase changes, bounded continuous headings and sampled poses for inspection. The subject follows the furniture-safe rounded path directly to its assigned desk, without an overview-camera orbit or desk fade.
+
+Run from the project root, with npm dependencies installed, Blender 4.3.2 and ffmpeg available:
+
+    node assets-source/export_corporate_layout.mjs
+    blender -b --factory-startup --threads 9 --python assets-source/render_corporate_workplace.py -- walk-sample 8
+    blender -b --factory-startup --threads 9 --python assets-source/render_corporate_workplace.py -- walk 8
+
+Validate the saved review without rerendering:
+
+    blender -b assets-source/corporate-office-walking-review.blend --python-exit-code 1 --python assets-source/validate_corporate_walking.py -- --require-video
+
+The validator writes `corporate-walking-validation.json`, checking every exported frame against the saved position, yaw, full scale and visibility. It also verifies continuous bounded headings, maximum movement steps, proportional gait clocks, all 16 original GLB hashes and all imported runtime source hashes. Once the MP4 exists, it also probes every encoded frame, checks frame count, duration and dimensions, and fully decodes the video with ffmpeg. Re-run the exact shared-controller simulation without modifying the snapshot:
+
+    node assets-source/export_corporate_layout.mjs --check
+
+The framing sample is `/tmp/pi-office-walk-framing.png`. Full render frames use `/tmp/pi-office-natural-walking-frames/`; ffmpeg creates `asset-renders/blender-corporate-natural-walking-lifecycle.mp4`. The earlier `blender-corporate-walking-lifecycle.mp4` remains available unchanged. The single new editable source is `corporate-office-walking-review.blend`, containing the imported original meshes, retained source clip tracks, baked review motion and packed presentation font. Opening that file and rendering frames 1–190 does not require Node or the runtime app.
+
+This CPU Cycles build has no OpenImageDenoise support. The bounded walking render uses eight samples; ffmpeg applies gentle spatial/temporal grain reduction (`hqdn3d=1:1:2:2`) during H.264 encoding. This postprocess does not change the path, animation timing, pose transitions, scale or visibility. The video identifies itself as an actual-speed Blender visualization. Encoding requires ffmpeg's libx264, drawtext and hqdn3d filters; the supplied command uses `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf`, which must be adjusted on systems using another font location.
+
+Optional stills use the same snapshot and original GLBs:
+
+    blender -b --factory-startup --python assets-source/render_corporate_workplace.py -- detail 64
+    blender -b --factory-startup --python assets-source/render_corporate_workplace.py -- overview 64
+    blender -b --factory-startup --python assets-source/render_corporate_workplace.py -- closeup 64
+
+These create clearly named `blender-corporate-*.png` review images. The optional detail command also saves its own new `corporate-office-detail-review.blend`; none of these commands overwrites historical scenes.
+
 ## Historical studio and furniture deliverables
 
 - `pi-office-studio.blend`: compressed editable complete room scene, including original furniture, characters, architecture, lighting and three review cameras.

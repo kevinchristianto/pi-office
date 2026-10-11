@@ -27,7 +27,6 @@ import {
   constrainCameraTarget,
   fitOfficeCamera,
   officeCameraBounds,
-  visibleRoomCount,
   type CameraAction,
 } from "./camera";
 
@@ -61,10 +60,14 @@ export default function CameraRig(props: CameraRigProps) {
   const blockedFollow = useRef(false);
   // Do not pull a user's camera sideways when a live session disappears.
   // A deliberate Fit resets the extent; additions only expand it.
-  const extent = useRef(visibleRoomCount(props.count));
-  extent.current = Math.max(extent.current, visibleRoomCount(props.count));
-  const bounds = useRef(officeCameraBounds(extent.current));
-  bounds.current = officeCameraBounds(extent.current);
+  const nextBounds = officeCameraBounds(props.count);
+  const bounds = useRef(nextBounds);
+  bounds.current = {
+    minX: Math.min(bounds.current.minX, nextBounds.minX),
+    maxX: Math.max(bounds.current.maxX, nextBounds.maxX),
+    minZ: Math.min(bounds.current.minZ, nextBounds.minZ),
+    maxZ: Math.max(bounds.current.maxZ, nextBounds.maxZ),
+  };
   const maxDistance = useRef(85);
   const initializedCamera = useRef<object | null>(null);
 
@@ -99,8 +102,7 @@ export default function CameraRig(props: CameraRigProps) {
       viewport.current.height,
       current.current.count,
     );
-    extent.current = visibleRoomCount(current.current.count);
-    bounds.current = officeCameraBounds(extent.current);
+    bounds.current = officeCameraBounds(current.current.count);
     maxDistance.current = Math.max(45, fit.distance * 1.6);
     c.maxDistance = Math.max(
       c.maxDistance === Infinity ? 0 : c.maxDistance,
@@ -164,6 +166,16 @@ export default function CameraRig(props: CameraRigProps) {
     manual();
     fit(initial);
   }, [camera, props.reset]);
+
+  useEffect(() => {
+    const c = controls.current;
+    if (!c) return;
+    // A growing grid or portrait resize must remain reachable with zoom-out,
+    // without moving a manually chosen view. Fit may later tighten this limit.
+    const fit = fitOfficeCamera(size.width, size.height, props.count);
+    maxDistance.current = Math.max(maxDistance.current, 45, fit.distance * 1.6);
+    c.maxDistance = Math.max(c.maxDistance, maxDistance.current);
+  }, [camera, props.count, size.width, size.height]);
 
   useEffect(() => {
     blockedFollow.current = false;
@@ -280,11 +292,9 @@ export default function CameraRig(props: CameraRigProps) {
           .clone()
           .sub(c.target)
           .setLength(CAMERA_FOCUS_DISTANCE);
-        transition.current = {
-          position: target.clone().add(offset),
-          target,
-          kind: "focus",
-        };
+        const eye = target.clone().add(offset);
+        constrainCameraTarget(eye, target, bounds.current);
+        transition.current = { position: eye, target, kind: "focus" };
         pendingFocus.current = null;
       }
     }
@@ -301,8 +311,8 @@ export default function CameraRig(props: CameraRigProps) {
         const alpha = cameraEase(delta, reduced);
         camera.position.lerp(desired, alpha);
         c.target.lerp(target, alpha);
-        constrainCameraTarget(camera.position, c.target, bounds.current);
         c.update();
+        constrainCameraTarget(camera.position, c.target, bounds.current);
         return;
       }
     }

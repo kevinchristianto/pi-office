@@ -37,7 +37,7 @@ function Example({
 }
 
 function trigger() {
-  return screen.getByRole("button", { name: "Choose session room" });
+  return screen.getByRole("button", { name: "Choose project office" });
 }
 
 function activeOption() {
@@ -57,7 +57,7 @@ describe("custom session room selector", () => {
     expect(trigger().textContent).toContain("Whole office");
     expect(screen.queryByRole("listbox")).toBeNull();
     await user.click(trigger());
-    const listbox = screen.getByRole("listbox", { name: "Session rooms" });
+    const listbox = screen.getByRole("listbox", { name: "Project offices" });
     expect(document.activeElement).toBe(listbox);
     expect(trigger().getAttribute("aria-expanded")).toBe("true");
     expect(trigger().getAttribute("aria-controls")).toBe(listbox.id);

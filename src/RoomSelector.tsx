@@ -145,7 +145,7 @@ export default function RoomSelector({
         ref={trigger}
         type="button"
         className="room-selector-trigger"
-        aria-label="Choose session room"
+        aria-label="Choose project office"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? `${id}-listbox` : undefined}
@@ -187,7 +187,7 @@ export default function RoomSelector({
             id={`${id}-listbox`}
             className="room-selector-listbox"
             role="listbox"
-            aria-label="Session rooms"
+            aria-label="Project offices"
             aria-activedescendant={activeId}
             tabIndex={-1}
             onKeyDown={handleKeys}

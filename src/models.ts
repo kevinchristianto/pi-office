@@ -38,3 +38,50 @@ export function mergeStaticModel(source: THREE.Object3D) {
   }
   return result;
 }
+
+/** Batch architecture by material; own buffers, retain cached GLTF materials elsewhere. */
+export function buildSolidModel(
+  solids: readonly {
+    position: [number, number, number];
+    size: [number, number, number];
+    color: string;
+    glass?: boolean;
+    emissive?: boolean;
+  }[],
+) {
+  const source = new THREE.Group();
+  const materials = new Map<string, THREE.MeshStandardMaterial>();
+  for (const solid of solids) {
+    const key = [solid.color, solid.glass, solid.emissive].join(":");
+    let material = materials.get(key);
+    if (!material) {
+      material = new THREE.MeshStandardMaterial({
+        color: solid.color,
+        roughness: solid.glass ? 0.12 : 0.7,
+        metalness: solid.glass ? 0.12 : 0.05,
+        transparent: Boolean(solid.glass),
+        opacity: solid.glass ? 0.2 : 1,
+        depthWrite: !solid.glass,
+        emissive: solid.emissive ? solid.color : "#000000",
+        emissiveIntensity: solid.emissive ? 0.5 : 0,
+      });
+      materials.set(key, material);
+    }
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(...solid.size), material);
+    mesh.position.set(...solid.position);
+    source.add(mesh);
+  }
+  const result = mergeStaticModel(source);
+  source.traverse((node) => {
+    if (node instanceof THREE.Mesh) node.geometry.dispose();
+  });
+  result.traverse((node) => {
+    if (
+      node instanceof THREE.Mesh &&
+      !Array.isArray(node.material) &&
+      node.material.transparent
+    )
+      node.castShadow = false;
+  });
+  return result;
+}

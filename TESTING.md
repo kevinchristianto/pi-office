@@ -1,4 +1,40 @@
-# Verification record · resident and camera iteration 0.4.0
+# Verification record · project-grouped corporate office 0.5.0
+
+Date: 2026-10-11. Reconstructed from the published 0.4.0 baseline after a cloud workspace rollback. Earlier 0.5.0 test totals are not evidence for this tree. All current results below come from fresh runs. Cloud Linux only; no access to the user’s computer.
+
+## Current verification
+
+Fresh `npm run check` passed after production-source freeze: strict frontend TypeScript and Vite build, strict observer TypeScript, 81 Node tests and 308 Vitest tests across 25 files (389 total). `git diff --check` passed. Six Playwright tests were discovered but not executed. All 16 shipped GLBs, including all eight corrected resident variants, are byte-identical to the published baseline. A fresh `npm ci --cache /tmp/pi-office-recovery-npm-cache` succeeded against the unchanged dependency lockfile (package version alone changed).
+
+Coverage includes compact centered multi-project grids, opposing desk orientations, camera fit/focus, workplace panels and keyboard behavior; confirmed lifecycle protocol and reconnect/filter suppression; complete swept-body entrance/exit routes through actual GLB furniture and architectural solids; frame-driven FIFO traffic, restart/interruption, retained departures after roster removal, reduced motion, direct line-of-sight pathfinding, collision-checked rounded turns, floor-union clearance and continuous heading. Independent integration tests run the actual lifecycle hook, React Three Fiber frame loop and authored GLB AnimationMixer together. Render output is stubbed in those tests, so they do not validate browser pixels or frame rate.
+
+Natural navigation uses a bounded eight-scene geometry cache. An independent four-project/24-route CPU check measured repeated equivalent layouts at 0.17–0.31 ms per batch after caching, versus 321–727 ms before the fix. Cold planning was about 511 ms under concurrent cloud rendering. These are development-machine route-generation timings, not browser frame-rate guarantees.
+
+Runtime hardening is verified with real HTTP streams, malformed/stalled/oversized uploads, bounded SSE clients, private token/static-file boundaries and real process mixed-signal shutdown. Windows command helpers and real Pi sessions remain untested here.
+
+## Project grouping regressions
+
+Actual temporary Git repositories, nested directories, symlink aliases, separate clones and linked worktrees verify canonical worktree-root identity. Bounded Git refusal, missing executable, output overflow, timeout and async start/shutdown races are covered. Windows normalization/filesystem-identity fixtures cover case/slash aliases and case-distinct directories; these are not native Windows runtime tests.
+
+Actual App/SSE/lifecycle-hook tests verify one project office for multiple source sessions, independent raw-ID collisions, source-specific inspection/focus/follow, live-first project/desk windows, retained historical observations and exact-root legacy upgrades. Real React Three Fiber/GLB tests cover preserved appearance, shared physical-room traffic and retained exit actors whose fields continue updating outside the six-desk window. Stable scene ordering prevents a last-root stop from cancelling its departure just because the project becomes offline. Unknown paths, truncated/ambiguous legacy paths and colliding display-ID namespaces remain isolated.
+
+## Animation review
+
+The updated natural-walking preview has 190 frames / 15.8333 seconds. Its sample route is 11.800 units instead of the previous 16.010; one-way walking time is about 6.56 seconds instead of 13.34. This comparison is specific to the preview desk.
+
+The current Blender review uses exported runtime geometry, entrance/desk route helpers and the same movement controller sampled at 12 fps. It shows a complete full-size arrival, seated work, stand and full departure at 1.8 scene units per second. Stand/sit has a 0.32-second transition phase, with a 0.2-second authored-clip blend. Walk clip playback runs at 1.5× the original rate to match the 50% faster translation. Heading is bounded, including a brief in-place turn on reversal. The project-grouping fix changes no review geometry or motion: all 190 samples and original GLBs were compared unchanged, source provenance was refreshed, and the saved scene plus existing MP4 passed validation/full decode again. It is a Blender visualization, not an application recording or proof of live Pi event delivery. Lighting, antialiasing and imported-clip blending can differ from Three.js.
+
+Only fresh explicit supported starts/stops trigger lifecycle movement. Initial snapshots, reconnects, filters, stale/offline transitions and task-turn activity never synthesize it. Stops are best-effort observer events; a process that terminates before sending one can simply become offline. Queued arrivals wait outside the visible scene, with one shared corridor owner. Completed-stop history is capped at 512 identities, prioritizing the current/inflight roster; a fresh transport epoch establishes a new snapshot baseline. Reduced motion settles directly without travel. Whole-project removal, focus/filter changes and transport resets cancel active travel because the viewed geometry changes; individual roster removal retains a confirmed departing actor. Actual Pi stays view-only.
+
+## Remaining validation
+
+On 2026-10-11 the supported separate cloud browser again returned `net::ERR_CONNECTION_REFUSED` for the executor’s loopback server. Inspecting its resulting error tab was blocked by the browser URL policy, so that route stopped. Same-process HTTP checks returned 200 for the built app and `/api/health`. Local Chromium’s earlier singleton-socket failure was not bypassed. Browser WebGL, pointer hit testing, touch, fullscreen and GPU performance remain unverified. Six Playwright definitions are supplied for running on a supported host. Blender images/video and real Three.js logic tests do not replace those checks.
+
+The following 0.4.0 record is retained as asset history, not the current release’s test total or current office layout.
+
+---
+
+# Historical verification · resident and camera iteration 0.4.0
 
 Date: 2026-10-10. Tested in a Linux cloud workspace with Node 24.19.0. No access to or changes on the user's Windows computer. No publication or deployment was used for testing.
 
