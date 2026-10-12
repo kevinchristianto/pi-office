@@ -1,0 +1,33 @@
+{
+  "name": "pi-office-companion",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Opt-in lightweight desktop companion for the existing Pi Office bridge",
+  "main": "main.cjs",
+  "engines": {
+    "node": ">=22.20"
+  },
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "start": "npm run build && electron .",
+    "test": "node --test test/*.test.cjs && vitest run",
+    "check": "npm run build && npm test",
+    "package:win": "npm run build && node package.cjs"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.1",
+    "@types/node": "24.19.1",
+    "@types/react": "19.1.16",
+    "@types/react-dom": "19.1.9",
+    "@vitejs/plugin-react": "4.7.0",
+    "electron": "44.7.0",
+    "jsdom": "26.1.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "typescript": "5.9.3",
+    "vite": "6.4.4",
+    "vitest": "4.1.11"
+  }
+}

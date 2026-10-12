@@ -1,0 +1,520 @@
+"use strict";
+
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+const {
+  PRESETS,
+  parsePort,
+  officeUrl,
+  isAllowedCommand,
+  isTrustedSender,
+  isAllowedRendererRequest,
+  createSnapshotPoller,
+} = require("./core.cjs");
+
+const IPC = Object.freeze({
+  state: "companion:get-state",
+  command: "companion:command",
+  update: "companion:state",
+});
+const RESTORE_SHORTCUT = "Control+Shift+Space";
+const HIDE_SHORTCUT = "Control+Shift+H";
+
+// Dependencies are injectable for lifecycle/security tests without launching Electron.
+function createCompanion(
+  electron,
+  { env = process.env, baseDirectory = __dirname, fetchSnapshot } = {},
+) {
+  const {
+    app,
+    BrowserWindow,
+    Menu,
+    Tray,
+    nativeImage,
+    globalShortcut,
+    ipcMain,
+    session,
+    shell,
+    screen,
+  } = electron;
+  const port = parsePort(env.PI_OFFICE_PORT);
+  const distDirectory = path.resolve(baseDirectory, "dist");
+  const rendererPath = path.join(distDirectory, "index.html");
+  const rendererUrl = pathToFileURL(rendererPath).href;
+  const externalUrl = officeUrl(port);
+  let window = null;
+  let tray = null;
+  let quitting = false;
+  let disposed = false;
+  let locked = false;
+  let rendererFailed = false;
+  let rendererGeneration = 0;
+  let reloadPending = false;
+  let alwaysOnTop = true;
+  let shortcutAvailable = false;
+  let hideShortcutAvailable = false;
+  let preset = "compact";
+  let pollState = {
+    snapshot: null,
+    connection: { status: "paused", lastSuccessAt: null, error: null },
+  };
+
+  const isWindow = () => window && !window.isDestroyed();
+  const getState = () => ({
+    ...pollState,
+    visible: Boolean(isWindow() && window.isVisible() && !window.isMinimized()),
+    alwaysOnTop,
+    locked,
+    shortcutAvailable,
+  });
+  const refreshMenu = () => {
+    if (!tray || tray.isDestroyed()) return;
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        {
+          label: "Show and unlock",
+          accelerator: RESTORE_SHORTCUT,
+          click: () => restore(),
+        },
+        {
+          label: "Hide companion",
+          accelerator: hideShortcutAvailable ? HIDE_SHORTCUT : undefined,
+          click: () => hide(),
+        },
+        { type: "separator" },
+        {
+          label: "Always on top",
+          type: "checkbox",
+          checked: alwaysOnTop,
+          click: () => void runCommand("toggle-top").catch(() => {}),
+        },
+        {
+          label: "Click-through lock",
+          type: "checkbox",
+          checked: locked,
+          enabled: shortcutAvailable,
+          click: () =>
+            void runCommand(locked ? "restore" : "lock").catch(() => {}),
+        },
+        {
+          label: "Size",
+          submenu: [
+            {
+              label: "Compact · 440 × 260",
+              type: "radio",
+              checked: preset === "compact",
+              click: () => void runCommand("compact").catch(() => {}),
+            },
+            {
+              label: "Roomy · 640 × 380",
+              type: "radio",
+              checked: preset === "roomy",
+              click: () => void runCommand("roomy").catch(() => {}),
+            },
+          ],
+        },
+        {
+          label: "Open full office",
+          click: () => void runCommand("open-office").catch(() => {}),
+        },
+        { type: "separator" },
+        { label: "Quit companion", click: () => quit() },
+      ]),
+    );
+  };
+  const publish = () => {
+    if (
+      isWindow() &&
+      !window.webContents.isDestroyed() &&
+      !rendererFailed &&
+      !reloadPending
+    ) {
+      // A process can disappear between the liveness check and the send.
+      try {
+        window.webContents.send(IPC.update, getState());
+      } catch {
+        /* Recovery remains native. */
+      }
+    }
+    refreshMenu();
+  };
+  const poller = createSnapshotPoller({
+    port,
+    ...(fetchSnapshot ? { fetchSnapshot } : {}),
+    onUpdate(next) {
+      pollState = next;
+      publish();
+    },
+  });
+  const syncVisibility = () => {
+    poller.setVisible(
+      Boolean(
+        isWindow() &&
+        window.isVisible() &&
+        !window.isMinimized() &&
+        !rendererFailed &&
+        !reloadPending,
+      ),
+    );
+    publish();
+  };
+  const unlock = () => {
+    if (!isWindow()) return;
+    window.setIgnoreMouseEvents(false);
+    window.setFocusable(true);
+    window.setMovable(true);
+    locked = false;
+  };
+  const ensureOnScreen = () => {
+    if (!isWindow()) return;
+    const bounds = window.getBounds();
+    const { workArea } = screen.getDisplayMatching(bounds);
+    const x = Math.max(
+      workArea.x,
+      Math.min(
+        bounds.x,
+        workArea.x + Math.max(0, workArea.width - bounds.width),
+      ),
+    );
+    const y = Math.max(
+      workArea.y,
+      Math.min(
+        bounds.y,
+        workArea.y + Math.max(0, workArea.height - bounds.height),
+      ),
+    );
+    if (x !== bounds.x || y !== bounds.y) window.setPosition(x, y);
+  };
+  function restore() {
+    if (!isWindow() || quitting) return;
+    unlock();
+    if (rendererFailed && !reloadPending) {
+      reloadPending = true;
+      const target = window;
+      const generation = rendererGeneration;
+      void target.loadFile(rendererPath).then(
+        () => {
+          if (
+            !isWindow() ||
+            target !== window ||
+            generation !== rendererGeneration
+          )
+            return;
+          rendererFailed = false;
+          reloadPending = false;
+          syncVisibility();
+        },
+        () => {
+          if (
+            !isWindow() ||
+            target !== window ||
+            generation !== rendererGeneration
+          )
+            return;
+          reloadPending = false;
+          publish();
+        },
+      );
+    }
+    if (window.isMinimized()) window.restore();
+    ensureOnScreen();
+    window.show();
+    window.focus();
+    syncVisibility();
+  }
+  function hide() {
+    if (!isWindow() || quitting) return;
+    // A visible taskbar window alone is not sufficient recovery after hide().
+    shortcutAvailable =
+      shortcutAvailable && globalShortcut.isRegistered(RESTORE_SHORTCUT);
+    if (!shortcutAvailable && (!tray || tray.isDestroyed())) {
+      throw new Error(
+        "Hide requires the recovery shortcut or tray. Quit remains available.",
+      );
+    }
+    unlock();
+    window.hide();
+    syncVisibility();
+  }
+  function quit() {
+    quitting = true;
+    dispose();
+    app.quit();
+  }
+  async function runCommand(command) {
+    if (!isAllowedCommand(command))
+      throw new Error("Unknown companion command");
+    if (!isWindow() || quitting)
+      throw new Error("Companion window unavailable");
+    switch (command) {
+      case "toggle-top":
+        alwaysOnTop = !alwaysOnTop;
+        window.setAlwaysOnTop(alwaysOnTop);
+        break;
+      case "lock":
+        // A tray may be absent from the OS shell. Lock requires a successfully
+        // registered, currently owned keyboard recovery path on every attempt.
+        shortcutAvailable =
+          shortcutAvailable && globalShortcut.isRegistered(RESTORE_SHORTCUT);
+        if (!shortcutAvailable) {
+          publish();
+          throw new Error(
+            "Click-through is disabled: Ctrl+Shift+Space is unavailable",
+          );
+        }
+        locked = true;
+        window.setMovable(false);
+        window.setFocusable(false);
+        window.setIgnoreMouseEvents(true, { forward: true });
+        window.blur();
+        break;
+      case "hide":
+        hide();
+        break;
+      case "restore":
+        restore();
+        break;
+      case "open-office":
+        await shell.openExternal(externalUrl);
+        break;
+      case "compact":
+      case "roomy":
+        preset = command;
+        window.setSize(PRESETS[command].width, PRESETS[command].height);
+        ensureOnScreen();
+        break;
+      case "quit":
+        quit();
+        break;
+    }
+    publish();
+    return getState();
+  }
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    poller.dispose();
+    globalShortcut.unregisterAll();
+    shortcutAvailable = false;
+    if (tray && !tray.isDestroyed()) tray.destroy();
+    tray = null;
+    ipcMain.removeHandler(IPC.state);
+    ipcMain.removeHandler(IPC.command);
+  }
+
+  const deny = (event) => event.preventDefault();
+  function secureSession(companionSession) {
+    companionSession.setPermissionRequestHandler(
+      (_contents, _permission, callback) => callback(false),
+    );
+    companionSession.setPermissionCheckHandler(() => false);
+    companionSession.setDevicePermissionHandler(() => false);
+    companionSession.on("will-download", deny);
+    companionSession.webRequest.onBeforeRequest(
+      { urls: ["<all_urls>"] },
+      (details, callback) => {
+        callback({
+          cancel: !isAllowedRendererRequest(details.url, distDirectory),
+        });
+      },
+    );
+  }
+  function secureContents(contents) {
+    contents.setWindowOpenHandler(() => ({ action: "deny" }));
+    contents.on("will-navigate", deny);
+    contents.on("will-frame-navigate", deny);
+    contents.on("will-redirect", deny);
+    contents.on("will-attach-webview", deny);
+    contents.on("select-bluetooth-device", (event, _devices, callback) => {
+      event.preventDefault();
+      callback("");
+    });
+    contents.on("render-process-gone", () => {
+      rendererFailed = true;
+      rendererGeneration++;
+      reloadPending = false;
+      unlock();
+      poller.setVisible(false);
+      publish();
+    });
+  }
+  function createTray() {
+    try {
+      // A self-contained opaque bitmap avoids remote images and filesystem reads.
+      const size = 32;
+      const pixels = Buffer.alloc(size * size * 4);
+      for (let y = 3; y < 29; y++) {
+        for (let x = 3; x < 29; x++) {
+          const offset = (y * size + x) * 4;
+          const pane =
+            y >= 9 && y <= 23 && ((x >= 8 && x <= 12) || (x >= 19 && x <= 23));
+          pixels.set(pane ? [35, 35, 39, 255] : [247, 188, 89, 255], offset);
+        }
+      }
+      const icon = nativeImage.createFromBitmap(pixels, {
+        width: size,
+        height: size,
+        scaleFactor: 1,
+      });
+      tray = new Tray(icon);
+      tray.setToolTip(
+        "Pi Office Companion · Ctrl+Shift+Space to show and unlock",
+      );
+      tray.on("click", restore);
+      tray.on("double-click", restore);
+      refreshMenu();
+    } catch {
+      if (tray && !tray.isDestroyed()) tray.destroy();
+      tray = null;
+    }
+  }
+  async function start() {
+    app.setName("Pi Office Companion");
+    app.enableSandbox();
+    if (!app.requestSingleInstanceLock()) {
+      app.quit();
+      return false;
+    }
+    app.on("second-instance", restore);
+    app.on("activate", restore);
+    app.on("before-quit", () => {
+      quitting = true;
+      dispose();
+    });
+    app.on("will-quit", dispose);
+    app.on("window-all-closed", () => {
+      if (!quitting) quit();
+    });
+    await app.whenReady();
+    if (quitting) return false;
+    const companionSession = session.fromPartition("pi-office-companion", {
+      cache: false,
+    });
+    secureSession(companionSession);
+    window = new BrowserWindow({
+      ...PRESETS.compact,
+      title: "Pi Office Companion",
+      frame: false,
+      transparent: true,
+      backgroundColor: "#00000000",
+      show: false,
+      resizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      alwaysOnTop: true,
+      hasShadow: false,
+      autoHideMenuBar: true,
+      skipTaskbar: false,
+      webPreferences: {
+        preload: path.join(baseDirectory, "preload.cjs"),
+        session: companionSession,
+        nodeIntegration: false,
+        nodeIntegrationInWorker: false,
+        nodeIntegrationInSubFrames: false,
+        contextIsolation: true,
+        sandbox: true,
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+        webviewTag: false,
+        devTools: false,
+        spellcheck: false,
+        navigateOnDragDrop: false,
+        backgroundThrottling: true,
+        safeDialogs: true,
+      },
+    });
+    window.setMenu(null);
+    secureContents(window.webContents);
+    ipcMain.handle(IPC.state, (event, ...args) => {
+      if (!isTrustedSender(event, window, rendererUrl) || args.length)
+        throw new Error("Untrusted companion request");
+      return getState();
+    });
+    ipcMain.handle(IPC.command, (event, ...args) => {
+      if (
+        !isTrustedSender(event, window, rendererUrl) ||
+        args.length !== 1 ||
+        !isAllowedCommand(args[0])
+      ) {
+        throw new Error("Untrusted companion command");
+      }
+      return runCommand(args[0]);
+    });
+    createTray();
+    try {
+      shortcutAvailable = globalShortcut.register(RESTORE_SHORTCUT, restore);
+    } catch {
+      shortcutAvailable = false;
+    }
+    try {
+      hideShortcutAvailable = globalShortcut.register(HIDE_SHORTCUT, () => {
+        try {
+          hide();
+        } catch {
+          /* Remain visible if every recovery method failed. */
+        }
+      });
+    } catch {
+      hideShortcutAvailable = false;
+    }
+    refreshMenu();
+    window.on("show", syncVisibility);
+    window.on("hide", syncVisibility);
+    window.on("minimize", syncVisibility);
+    window.on("restore", syncVisibility);
+    window.on("close", (event) => {
+      if (quitting) return;
+      shortcutAvailable =
+        shortcutAvailable && globalShortcut.isRegistered(RESTORE_SHORTCUT);
+      if (shortcutAvailable || (tray && !tray.isDestroyed())) {
+        event.preventDefault();
+        hide();
+      } else quit();
+    });
+    window.once("ready-to-show", restore);
+    window.webContents.on("did-finish-load", () => {
+      rendererFailed = false;
+      reloadPending = false;
+      syncVisibility();
+    });
+    window.on("closed", () => {
+      window = null;
+      poller.setVisible(false);
+    });
+    // Never serve or embed the office website. This is a separate local renderer.
+    try {
+      await window.loadFile(rendererPath);
+    } catch (error) {
+      quit();
+      throw new Error(`Unable to load built companion UI: ${error.message}`);
+    }
+    return true;
+  }
+  return {
+    start,
+    dispose,
+    getState,
+    runCommand,
+    restore,
+    hide,
+    quit,
+    getWindow: () => window,
+    getTray: () => tray,
+  };
+}
+
+module.exports = { IPC, RESTORE_SHORTCUT, HIDE_SHORTCUT, createCompanion };
+
+if (require.main === module) {
+  const electron = require("electron");
+  try {
+    const companion = createCompanion(electron);
+    companion.start().catch((error) => {
+      console.error(error.message);
+      electron.app.quit();
+    });
+  } catch (error) {
+    console.error(error.message);
+    electron.app.quit();
+  }
+}
