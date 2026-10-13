@@ -1,6 +1,8 @@
 "use strict";
 
 const path = require("node:path");
+const { createBridgeRuntime } = require("./bridge-runtime.cjs");
+const { prepareObserverConnection } = require("./observer-connect.cjs");
 const { pathToFileURL } = require("node:url");
 const {
   PRESETS,
@@ -23,7 +25,13 @@ const HIDE_SHORTCUT = "Control+Shift+H";
 // Dependencies are injectable for lifecycle/security tests without launching Electron.
 function createCompanion(
   electron,
-  { env = process.env, baseDirectory = __dirname, fetchSnapshot } = {},
+  {
+    env = process.env,
+    baseDirectory = __dirname,
+    fetchSnapshot,
+    bridgeFactory = createBridgeRuntime,
+    resourcesPath = process.resourcesPath,
+  } = {},
 ) {
   const {
     app,
@@ -45,6 +53,11 @@ function createCompanion(
   let window = null;
   let tray = null;
   let quitting = false;
+  let bridgeRuntime = null;
+  let bridgeState = null;
+  let shutdownPromise = null;
+  let shutdownFinished = false;
+  let connectDialogOpen = false;
   let disposed = false;
   let locked = false;
   let rendererFailed = false;
@@ -62,6 +75,16 @@ function createCompanion(
   const isWindow = () => window && !window.isDestroyed();
   const getState = () => ({
     ...pollState,
+    ...(bridgeState ? { bridge: bridgeState } : {}),
+    ...(bridgeState && !["owned", "external"].includes(bridgeState.mode)
+      ? {
+          connection: {
+            status: bridgeState.mode === "error" ? "offline" : "connecting",
+            lastSuccessAt: null,
+            error: bridgeState.error,
+          },
+        }
+      : {}),
     visible: Boolean(isWindow() && window.isVisible() && !window.isMinimized()),
     alwaysOnTop,
     locked,
@@ -117,6 +140,7 @@ function createCompanion(
           label: "Open full office",
           click: () => void runCommand("open-office").catch(() => {}),
         },
+        { label: "Connect Pi…", click: () => void connectPi().catch(() => {}) },
         { type: "separator" },
         { label: "Quit companion", click: () => quit() },
       ]),
@@ -153,7 +177,8 @@ function createCompanion(
         window.isVisible() &&
         !window.isMinimized() &&
         !rendererFailed &&
-        !reloadPending,
+        !reloadPending &&
+        (!app.isPackaged || ["owned", "external"].includes(bridgeState?.mode)),
       ),
     );
     publish();
@@ -239,7 +264,77 @@ function createCompanion(
   function quit() {
     quitting = true;
     dispose();
-    app.quit();
+    if (!bridgeRuntime) {
+      app.quit();
+      return;
+    }
+    if (!shutdownPromise)
+      shutdownPromise = bridgeRuntime
+        .stop()
+        .catch(() => {})
+        .finally(() => {
+          shutdownFinished = true;
+          app.quit();
+        });
+  }
+  async function connectPi() {
+    if (connectDialogOpen || quitting) return;
+    connectDialogOpen = true;
+    try {
+      if (!bridgeRuntime || bridgeState?.mode === "external") {
+        await electron.dialog.showMessageBox(window, {
+          type: "info",
+          title: "Connect Pi",
+          message: "Use your existing Pi Office observer connection.",
+          detail:
+            "The existing bridge is managed separately. Continue using its CONNECT-PI.cmd or configured observer. The companion does not replace its token or register another observer.",
+          buttons: ["Close"],
+        });
+        return;
+      }
+      if (bridgeState?.mode !== "owned") {
+        await electron.dialog.showMessageBox(window, {
+          type: "warning",
+          title: "Connect Pi",
+          message: "The local bridge is not ready.",
+          detail: bridgeState?.error || "Wait for startup, or quit and retry.",
+          buttons: ["Close"],
+        });
+        return;
+      }
+      const tokenFile = bridgeRuntime.getTokenFile();
+      const { command } = await prepareObserverConnection({
+        officeDirectory: path.join(resourcesPath, "office"),
+        userData: app.getPath("userData"),
+        tokenFile,
+        port,
+      });
+      const { response } = await electron.dialog.showMessageBox(window, {
+        type: "info",
+        title: "Connect Pi",
+        message: "Start Pi with the bundled observer",
+        detail: `Run the command in PowerShell from your project folder. Pi must already be installed. This starts a new Pi session; it does not modify existing sessions or persistent settings. Do not also load a second Pi Office observer. Keep this app running.
+
+${tokenFile ? "Only a local token-file path is used; no token is copied." : "Use the same terminal environment that supplied PI_OFFICE_TOKEN when launching this app."}
+
+${command}`,
+        buttons: ["Copy PowerShell command", "Close"],
+        defaultId: 1,
+        cancelId: 1,
+      });
+      if (response === 0) electron.clipboard.writeText(command);
+    } catch {
+      if (!quitting)
+        await electron.dialog.showMessageBox(window, {
+          type: "error",
+          title: "Connect Pi",
+          message: "Could not prepare the observer connection.",
+          detail: "Check that the app data folder is writable, then try again.",
+          buttons: ["Close"],
+        });
+    } finally {
+      connectDialogOpen = false;
+    }
   }
   async function runCommand(command) {
     if (!isAllowedCommand(command))
@@ -282,6 +377,9 @@ function createCompanion(
         preset = command;
         window.setSize(PRESETS[command].width, PRESETS[command].height);
         ensureOnScreen();
+        break;
+      case "connect-pi":
+        await connectPi();
         break;
       case "quit":
         quit();
@@ -377,9 +475,14 @@ function createCompanion(
     }
     app.on("second-instance", restore);
     app.on("activate", restore);
-    app.on("before-quit", () => {
-      quitting = true;
-      dispose();
+    app.on("before-quit", (event) => {
+      if (bridgeRuntime && !shutdownFinished) {
+        event.preventDefault();
+        quit();
+      } else {
+        quitting = true;
+        dispose();
+      }
     });
     app.on("will-quit", dispose);
     app.on("window-all-closed", () => {
@@ -387,6 +490,23 @@ function createCompanion(
     });
     await app.whenReady();
     if (quitting) return false;
+    if (app.isPackaged) {
+      bridgeRuntime = bridgeFactory({
+        app,
+        utilityProcess: electron.utilityProcess,
+        env,
+        baseDirectory,
+        resourcesPath,
+        port,
+        onState(next) {
+          bridgeState = next;
+          syncVisibility();
+        },
+      });
+      bridgeState = bridgeRuntime.getState();
+      // The UI remains available even if a conflicting listener prevents startup.
+      void bridgeRuntime.start().catch(() => {});
+    }
     const companionSession = session.fromPartition("pi-office-companion", {
       cache: false,
     });

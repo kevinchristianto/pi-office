@@ -1,24 +1,24 @@
 # Desktop companion verification
 
-Target: opt-in companion preview 0.1.2, based on published Pi Office v0.5.2 (`c31177705021aedcb538b0a59e37f63ed8da60e8`). Cloud Linux verification only, 2026-10-12.
+Target: self-contained portable companion preview 0.2.0, based on published Pi Office v0.5.2 (`c31177705021aedcb538b0a59e37f63ed8da60e8`) and desktop feature commit `293f83a1c3b2668814934e55accd6c47865e5da9`. Cloud Linux verification, 2026-10-13; a separate Windows CI job builds the release asset.
 
 ## Isolation
 
-All existing baseline-tracked files remain byte-for-byte unchanged, including root package/lockfile, React/R3F office, bridge, observer, visual assets, routes, and tests. Changes are additions inside `desktop/` only. The held v0.5.3 cubicle change is not included.
+All existing baseline-tracked files remain byte-for-byte unchanged, including root package/lockfile, React/R3F office, bridge, observer, visual assets, routes, and tests. Changes are isolated to `desktop/` and one new feature-branch-only release workflow. The held v0.5.3 cubicle change is not included.
 
 Root `npm run check` passes: production TypeScript/Vite build, observer typecheck, 119 Node tests and 390 component tests (36 files), 509 tests total.
 
 ## Desktop checks
 
-The desktop production TypeScript/Vite build passes. It bundles React plus the 2D UI and the existing pure project projection logic; no Three.js, React Three Fiber, canvas or 3D models are loaded. The desktop package has its own dependencies/lockfile. `npm audit` reports zero known vulnerabilities for this lockfile at verification time.
+The desktop production TypeScript/Vite build passes. It bundles React plus the 2D UI and the existing pure project projection logic; no Three.js, React Three Fiber, canvas or 3D models are loaded. The desktop package has its own dependencies/lockfile. The shipped production dependency audit reports zero known vulnerabilities. The build-only electron-builder toolchain currently reports eight moderate transitive findings associated with an unpatched sprintf-js denial-of-service advisory. Those development dependencies are not shipped; build scripts use fixed metadata. This is disclosed rather than described as a clean development audit.
 
 Transport and shell tests cover fixed IPv4 loopback GET-only access, rejected redirects, bounded response length/deadline, malformed JSON and identities, stripped data fields, original session+agent identities, hidden cancellation and late-result races, recovery hotkey conflicts, tray failure, singleton behavior, crash recovery, secure BrowserWindow preferences, denied permissions/network/navigation/popups/downloads, exact IPC arguments and top-frame sender validation, and preload event stripping.
 
 A real HTTP integration test starts the unchanged bridge with a synthetic fixture and confirms that companion reads preserve the observer roster and revision. This does not install or alter the user's observer.
 
-Final `desktop/npm run check` passes: build plus **99 Node tests and 84 renderer/motion/geometry tests**, 183 desktop tests total, with no skips. Combined with the unchanged web suite, 692 tests pass. Renderer coverage includes startup subscription ordering, updates/removals, project and history selection, task inspection/back/escape, offline state, safe text, recovery controls, and every bridge status including completed.
+Final `desktop/npm run check` passes: build plus **162 Node tests and 86 renderer/motion/geometry tests**, 248 desktop tests total, with no skips. Combined with the unchanged web suite, 757 tests pass. Renderer coverage includes startup subscription ordering, updates/removals, project and history selection, task inspection/back/escape, offline state, safe text, recovery controls, and every bridge status including completed.
 
-`npm run package:win` successfully creates an unsigned Windows x64 portable package. Its ASAR contains only the shell, preload, core, bundled renderer, package metadata and documentation. Packaged runtime source bytes match the verified source. No web/observer/bridge files or node_modules are shipped inside the ASAR. The full unpacked Electron distribution is about 369 MiB; this is not a tiny native executable. Successful cross-packaging does not establish that the app has run on Windows.
+`npm run package:win` creates an unsigned single portable EXE with an x86 NSIS bootstrap and x64 Electron payload. Its ASAR contains the desktop runtime helpers, preload, core, renderer and stripped package metadata. The unchanged bridge, observer and full web office are bundled separately under resources/office. No development node_modules are shipped. Exact source and embedded-payload verification must pass before a release asset is accepted. This includes Chromium/Electron overhead and is not a tiny native executable. Successful cross-packaging does not establish that the app has run on Windows.
 
 ## Measurements and limits
 
@@ -50,3 +50,17 @@ The previous typing illustration painted hands after the opaque laptop lid, and 
 Thirteen new independent geometry tests sample 1,001 typing phases, checking wrist continuity inside palm ellipses, visible finger/deck contact, limb bounds, exactly two visible forearms in each active pose, logo bounds, and corrected paint order. The existing motion test now asserts deck → limbs → opaque lid rather than the previous reversed requirement.
 
 A separate offline raster diagnostic sampled 582 poses across working, idle, thinking, waiting, error and completed cycles. The opaque lid interior remained pixel-identical throughout each state's cycle; the prior illustration changed 183 interior pixels between two typing poses. Dense contact sheets and decoded corrected-video frames were visually inspected. This validates the authored SVG geometry/layering, not native Windows/browser rendering or performance. The corrected 14-second preview retains its software-rendered label.
+
+## Self-contained executable update (0.2.0)
+
+Fresh aggregate checks pass: root 119 Node + 390 component tests (509); desktop 162 Node + 86 component tests (248). Total: 757 passing tests, no skips. Both production builds and the observer typecheck pass. These counts include 39 focused runtime/worker tests, 16 independent executable integration checks, and 8 packaging tests.
+
+The packaged app bundles the unchanged bridge modules, full root web build, observer source and Electron runtime. A bounded 4 KiB, 1.5-second loopback health read accepts only the existing Pi Office service/protocol. Only connection refusal permits an app-owned bridge launch. Conflicting or unresponsive listeners produce fixed, non-secret error messages; no ingest/write request or process kill is sent to them. The renderer does not poll until the bridge is verified as external or owned.
+
+An owned bridge runs under Electron utilityProcess with an allowlisted environment, no inherited Node loader/debug arguments and private parent IPC. Startup, graceful shutdown and kill fallback are bounded; only the recorded owned process handle can be stopped. Parent heartbeat expiry shuts down an orphaned worker. This small IPC watchdog remains active while the dock is hidden; snapshot HTTP polling and portrait animation still pause. No whole-app resource measurements have been made for this new packaged arrangement.
+
+The stable credential file is outside temporary extraction. Its contents never enter renderer state, clipboard instructions, logs or package artifacts. Connect Pi exports only the unchanged observer source after an explicit action. Directory/symlink confinement, atomic export, PowerShell quote escaping, explicit clipboard consent, repeated dialog suppression, and the complete immutable 175-file baseline are regression-tested. No Pi settings, prompts or running sessions are changed.
+
+The portable packager verifies both the assembled application and the actual executable's embedded payload, including Electron x64 PE architecture, ASAR source byte identity, all web files, unchanged bridge modules and observer. An EXE SHA256 and JSON verification report are emitted. This is package inspection, not a native Windows launch, visual recording or end-to-end Pi test.
+
+Additional Windows acceptance checks: first launch without Node/npm, offline launch once the EXE is downloaded, moving/relaunching the EXE, simultaneous second launch, user-data paths containing spaces/quotes, no existing bridge, a healthy existing bridge, unrelated port conflict, quit during startup, bridge crash, parent crash, explicit observer connection from a project folder, and full web office opened on demand. Confirm external bridges and all Pi sessions survive app quit. Code signing and interactive Windows acceptance remain outstanding.

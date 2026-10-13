@@ -2,6 +2,10 @@ import type { Snapshot } from "../../src/types";
 
 export interface CompanionState {
   snapshot: Snapshot | null;
+  bridge?: {
+    mode: "starting" | "external" | "owned" | "error";
+    error: string | null;
+  };
   connection: {
     status: "connecting" | "live" | "offline" | "paused";
     lastSuccessAt: number | null;
@@ -18,6 +22,7 @@ export type CompanionCommand =
   | "hide"
   | "restore"
   | "open-office"
+  | "connect-pi"
   | "compact"
   | "roomy"
   | "quit";

@@ -1,8 +1,24 @@
 # Pi Office Companion (preview)
 
-An optional 2D desktop dock for the existing Pi Office bridge. The web office, observer, and web commands are unchanged. This package does not start another bridge, register another observer, or load the 3D scene in the background.
+An optional 2D desktop dock for Pi Office. The web office, observer, and web commands are unchanged. The portable Windows executable includes Electron, the local bridge, the full built web office, and the observer source. It reuses a compatible running bridge or starts its own loopback-only bridge. It never registers another observer or loads the 3D scene in the background.
 
-## Run on Windows
+## Portable Windows executable (0.2.0)
+
+1. Run `Pi-Office-0.2.0-win-x64-portable.exe`. There is no separate npm install/start or first-launch Electron download. Portable means one self-extracting executable, not an installer; extraction takes disk space and may take a moment.
+2. The dock starts the bundled bridge if nothing is listening on the configured port. A healthy existing Pi Office bridge is reused and left running on exit. An unrelated or incompatible service on the port is reported as an error; it is not stopped or replaced.
+3. Open the options menu (or tray menu) and choose **Connect Pi…**. For an app-owned bridge, copy the provided PowerShell command and run it from your project folder. Pi must already be installed. This explicitly starts Pi with the bundled observer; it does not change persistent Pi settings or existing sessions. Do not load a second copy of the observer.
+4. For an existing external bridge, keep using its existing observer connection or `CONNECT-PI.cmd`.
+5. **Open full 3D office** opens the included web office on demand in your default browser. Close that browser tab to stop rendering it. Keep the executable running while using its owned bridge; Quit closes that bridge, but never stops Pi processes or sessions.
+
+The bridge credential stays in the app's persistent user-data directory, outside the executable's temporary extraction folder. The Connect Pi dialog supplies the exact path without revealing its contents. Observer source is exported to a stable subdirectory only when you choose Connect Pi. It remains usable after the executable is moved or its extraction directory is removed.
+
+For an existing observer whose token file must be retained, explicitly set `PI_OFFICE_TOKEN_FILE` to that same absolute file path before launching the executable. `PI_OFFICE_TOKEN` is also supported and takes precedence, but is never displayed or copied; when using it, launch Pi from the same terminal environment. Do not send credential values in chat or logs. The app never searches for or copies another installation's tokens.
+
+`PI_OFFICE_PORT` selects the loopback port (default 4317). The Connect Pi command sets its matching `PI_OFFICE_URL`. No remote bridge addresses are supported. If an external bridge stops, restart it as usual; the app does not silently take ownership of it.
+
+This is an unsigned preview. Windows may show an unknown-publisher warning. Do not disable Windows security protections. A successful cross-build and package inspection do not establish native Windows behavior; see VERIFICATION.md.
+
+## Run from source on Windows
 
 1. Start your existing Pi Office normally (`START-OFFICE.cmd` or the root `npm start`, with its web build already available).
 2. In a separate terminal, from this repository: `cd desktop`, then `npm ci`, then `npm start`.
@@ -27,15 +43,15 @@ The OS may reserve a shortcut, so shortcut registration is checked rather than a
 
 ## Connection and resource behavior
 
-The main process reads the existing `/api/snapshot` endpoint at a bounded interval while visible. It does not read the bridge's ingest token, call write endpoints, or expose a network API to the renderer. Hiding stops polling, aborts any pending read, and pauses animations. Restoring requests a fresh snapshot. Offline content is visibly marked as last-known data; it is not presented as current activity.
+The main process reads the verified bridge `/api/snapshot` endpoint at a bounded interval while visible. The renderer never receives the ingest token or a network API. Its transport uses read endpoints only; the app-owned bridge retains its existing authenticated observer ingest endpoint. Hiding stops polling, aborts any pending read, and pauses animations. Restoring requests a fresh snapshot. Offline content is visibly marked as last-known data; it is not presented as current activity.
 
 Only lightweight CSS/SVG resident animations are used, with a limited on-screen roster and reduced-motion support. There is no Three.js/WebGL dependency in the desktop renderer. Electron still carries Chromium's process/memory overhead: this is an architectural resource reduction, not a measured Windows CPU/RAM/GPU guarantee.
 
 ## Packaging
 
-`npm run package:win` builds an unpacked Windows x64 app in `release/Pi-Office-Companion-win32-x64/`. Run its `.exe` alongside the already-running bridge. It is a portable preview, not an installer, is not code-signed, and has no auto-updater. Windows may display an unknown-publisher warning. Do not disable OS protection to run it; review/build the source or use a trusted signed distribution.
+`npm run package:win` builds the root web office and desktop UI, then creates a self-contained Windows x64 portable EXE under `desktop/release/`. Install root and desktop dependencies with `npm ci` before building. The build uses pinned electron-builder and official Electron/NSIS distribution tooling, with publishing disabled. It has no auto-updater.
 
-The package contains the bundled 2D UI and Electron shell, without the web app's assets, observer, bridge, or development dependencies. A successful cross-platform package build does not verify Windows transparency, tray behavior, hotkeys, or native runtime rendering. See `VERIFICATION.md` for actual checks and limits.
+The package contains the 2D UI, Electron runtime, unchanged bridge modules, full web build, observer source, and notices. It excludes development dependencies and local credentials. A successful cross-platform package build does not verify Windows transparency, tray behavior, hotkeys, or native runtime rendering. See `VERIFICATION.md` for actual checks and limits.
 
 ## Security boundaries
 

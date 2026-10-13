@@ -1,26 +1,60 @@
 "use strict";
-// Build a portable preview, never an installer or an auto-start registration.
-(async () => {
-  const { packager } = await import("@electron/packager");
-  const output = await packager({
-    dir: __dirname,
-    name: "Pi-Office-Companion",
-    platform: "win32",
-    arch: "x64",
-    out: require("node:path").join(__dirname, "release"),
-    overwrite: true,
-    asar: true,
-    prune: true,
-    ...(process.env.electron_config_cache
-      ? { download: { cacheRoot: process.env.electron_config_cache } }
-      : {}),
-    ignore: [
-      /^\/(src|test|release|node_modules)(\/|$)/,
-      /^\/(vite\.config\.ts|vitest\.config\.ts|tsconfig\.json|package\.cjs|index\.html|\.gitignore)$/,
-    ],
+
+const path = require("node:path");
+const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
+const {
+  createConfiguration,
+  validatePortableCompilerOptions,
+} = require("./packaging/config.cjs");
+
+// Use npm's own JavaScript entry point to avoid shell quoting on Windows.
+function buildProject(cwd) {
+  const npmCli = process.env.npm_execpath;
+  if (!npmCli)
+    throw new Error("Run this build with npm run package:win from desktop/.");
+  const result = spawnSync(process.execPath, [npmCli, "run", "build"], {
+    cwd,
+    stdio: "inherit",
+    env: process.env,
   });
-  console.log(output.join("\n"));
-})().catch((error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`Build failed in ${cwd}`);
+}
+
+async function main() {
+  buildProject(path.resolve(__dirname, ".."));
+  buildProject(__dirname);
+  const { build, Platform, Arch } = require("electron-builder");
+  let compilerVerified = false;
+  const artifacts = await build({
+    projectDir: __dirname,
+    targets: Platform.WINDOWS.createTarget("portable", Arch.x64),
+    config: createConfiguration(__dirname),
+    // Never publish, even when run in CI with release credentials present.
+    publish: "never",
+    effectiveOptionComputed: async (options) => {
+      compilerVerified =
+        validatePortableCompilerOptions(options) || compilerVerified;
+      return false;
+    },
+  });
+  assert(compilerVerified, "NSIS portable compiler options were not verified");
+  const { verifyPackage } = require("./packaging/verify.cjs");
+  console.log(
+    JSON.stringify(
+      await verifyPackage({ desktopDir: __dirname, artifacts }),
+      null,
+      2,
+    ),
+  );
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { buildProject, main };

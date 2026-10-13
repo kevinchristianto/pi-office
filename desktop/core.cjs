@@ -14,6 +14,7 @@ const COMMANDS = Object.freeze([
   "hide",
   "restore",
   "open-office",
+  "connect-pi",
   "compact",
   "roomy",
   "quit",

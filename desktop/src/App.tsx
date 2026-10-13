@@ -211,6 +211,7 @@ export function App() {
           <button onClick={() => run("hide")}>
             Hide companion <span className="menu-hint">shortcut or tray</span>
           </button>
+          <button onClick={() => run("connect-pi")}>Connect Pi…</button>
           <button onClick={() => run("quit")}>Quit companion</button>
           {!state.shortcutAvailable && (
             <p className="menu-note">
@@ -221,6 +222,11 @@ export function App() {
         </div>
       )}
 
+      {state.bridge?.error && (
+        <p role="alert" className="menu-note">
+          {state.bridge.error}
+        </p>
+      )}
       <section className="office-content" aria-label="Agent office">
         {!panelOpen && (
           <>
@@ -239,7 +245,9 @@ export function App() {
                 </h1>
                 <p className="office-summary">
                   {isLive
-                    ? `${current.length} current · ${busy} busy${attention ? ` · ${attention} needs attention` : ""}`
+                    ? current.length === 0 && state.bridge?.mode === "owned"
+                      ? "Choose Connect Pi from the options menu"
+                      : `${current.length} current · ${busy} busy${attention ? ` · ${attention} needs attention` : ""}`
                     : state.connection.status === "connecting"
                       ? "Connecting to the local office bridge"
                       : state.connection.status === "paused"

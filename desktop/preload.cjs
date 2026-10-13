@@ -9,6 +9,7 @@ const commands = new Set([
   "hide",
   "restore",
   "open-office",
+  "connect-pi",
   "compact",
   "roomy",
   "quit",

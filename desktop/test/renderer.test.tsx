@@ -450,3 +450,27 @@ describe("companion state lifecycle", () => {
     expect(JSON.stringify(snapshot)).toBe(before);
   });
 });
+
+it("offers explicit connection setup for a packaged empty owned office", async () => {
+  await show({ ...live([]), bridge: { mode: "owned", error: null } });
+  expect(
+    screen.getByText("Choose Connect Pi from the options menu"),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByLabelText("Companion options"));
+  fireEvent.click(screen.getByRole("button", { name: "Connect Pi…" }));
+  expect(command).toHaveBeenLastCalledWith("connect-pi");
+});
+
+it("renders a packaged bridge startup error as plain text", async () => {
+  await show({
+    ...initialState,
+    connection: {
+      status: "offline",
+      lastSuccessAt: null,
+      error: "Port occupied",
+    },
+    bridge: { mode: "error", error: "Port occupied <script>" },
+  });
+  expect(screen.getByRole("alert").textContent).toBe("Port occupied <script>");
+  expect(document.querySelector("script")).toBeNull();
+});
