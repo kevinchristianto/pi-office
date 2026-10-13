@@ -167,3 +167,49 @@ test("resource verification detects changed, missing and extra assets", async (t
   await fs.rm(path.join(target, "models", "agent.glb"));
   await assert.rejects(identicalTree(source, target), /Asset list differs/);
 });
+
+test("ASAR reads convert portable inventory paths for the real Windows lookup algorithm", async () => {
+  const vm = require("node:vm");
+  const { createRequire } = require("node:module");
+  const { nativeArchivePath } = require("../packaging/verify.cjs");
+  const modulePath = require.resolve("app-builder-lib/out/asar/asar.js");
+  const source = await fs.readFile(modulePath, "utf8");
+  const localRequire = createRequire(modulePath);
+  for (const pathApi of [path.win32, path.posix]) {
+    const exports = {};
+    vm.runInNewContext(source, {
+      exports,
+      require: (name) => (name === "path" ? pathApi : localRequire(name)),
+      Buffer,
+    });
+    const leaf = { size: 0, offset: "0" };
+    const archive = new exports.AsarFilesystem("fixture.asar", {
+      files: { dist: { files: { assets: { files: { "index.css": leaf } } } } },
+    });
+    if (pathApi === path.win32)
+      assert.throws(
+        () => archive.getFile("dist/assets/index.css"),
+        /Cannot find node/,
+      );
+    assert.equal(
+      archive.getFile(nativeArchivePath("dist/assets/index.css", pathApi)),
+      leaf,
+    );
+    assert.deepEqual(
+      await archive.readFile(
+        nativeArchivePath("dist/assets/index.css", pathApi),
+      ),
+      Buffer.alloc(0),
+    );
+  }
+  assert.equal(nativeArchivePath("main.cjs", path.win32), "main.cjs");
+  for (const bad of [
+    "../secret",
+    "/absolute",
+    "dist//file",
+    "dist\\file",
+    "dist/./file",
+    "dist/../file",
+  ])
+    assert.throws(() => nativeArchivePath(bad));
+});

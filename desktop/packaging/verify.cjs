@@ -148,6 +148,21 @@ async function verifyEmbeddedPayload(launcher, unpacked) {
   }
 }
 
+// Inventory names use forward slashes on every host; app-builder-lib's ASAR
+// lookup splits on the host path.sep, including Windows backslashes.
+function nativeArchivePath(file, pathApi = path) {
+  assert(
+    typeof file === "string" && !file.includes("\\") && !file.includes("\0"),
+    "Invalid archive path",
+  );
+  const parts = file.split("/");
+  assert(
+    parts.every((part) => part && part !== "." && part !== ".."),
+    "Invalid archive path",
+  );
+  return parts.join(pathApi.sep);
+}
+
 async function verifyPackage({
   desktopDir = path.resolve(__dirname, ".."),
   artifacts,
@@ -232,7 +247,7 @@ async function verifyPackage({
   );
   for (const file of [...shellFiles, ...rendererFiles]) {
     assert.equal(
-      sha256(await asar.readFile(file)),
+      sha256(await asar.readFile(nativeArchivePath(file))),
       sha256(await fs.readFile(path.join(desktopDir, file))),
       `Packaged application differs: ${file}`,
     );
@@ -265,12 +280,9 @@ async function verifyPackage({
 }
 
 if (require.main === module) {
-  verifyPackage()
-    .then((report) => console.log(JSON.stringify(report, null, 2)))
-    .catch((error) => {
-      console.error(error.stack || error.message);
-      process.exitCode = 1;
-    });
+  require("./cli.cjs").runCli(async () => {
+    console.log(JSON.stringify(await verifyPackage(), null, 2));
+  });
 }
 
 module.exports = {
@@ -278,6 +290,7 @@ module.exports = {
   embeddedArchive,
   fileList,
   identicalTree,
+  nativeArchivePath,
   readPE,
   verifyAppMetadata,
   verifyPackage,

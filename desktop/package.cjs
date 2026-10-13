@@ -51,10 +51,7 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch((error) => {
-    console.error(error.stack || error.message);
-    process.exitCode = 1;
-  });
+  require("./packaging/cli.cjs").runCli(main);
 }
 
 module.exports = { buildProject, main };

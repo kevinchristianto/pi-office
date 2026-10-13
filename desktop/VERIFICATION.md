@@ -16,7 +16,7 @@ Transport and shell tests cover fixed IPv4 loopback GET-only access, rejected re
 
 A real HTTP integration test starts the unchanged bridge with a synthetic fixture and confirms that companion reads preserve the observer roster and revision. This does not install or alter the user's observer.
 
-Final `desktop/npm run check` passes: build plus **162 Node tests and 86 renderer/motion/geometry tests**, 248 desktop tests total, with no skips. Combined with the unchanged web suite, 757 tests pass. Renderer coverage includes startup subscription ordering, updates/removals, project and history selection, task inspection/back/escape, offline state, safe text, recovery controls, and every bridge status including completed.
+Final `desktop/npm run check` passes: build plus **168 Node tests and 86 renderer/motion/geometry tests**, 254 desktop tests total, with no skips. Combined with the unchanged web suite, 763 tests pass. Renderer coverage includes startup subscription ordering, updates/removals, project and history selection, task inspection/back/escape, offline state, safe text, recovery controls, and every bridge status including completed.
 
 `npm run package:win` creates an unsigned single portable EXE with an x86 NSIS bootstrap and x64 Electron payload. Its ASAR contains the desktop runtime helpers, preload, core, renderer and stripped package metadata. The unchanged bridge, observer and full web office are bundled separately under resources/office. No development node_modules are shipped. Exact source and embedded-payload verification must pass before a release asset is accepted. This includes Chromium/Electron overhead and is not a tiny native executable. Successful cross-packaging does not establish that the app has run on Windows.
 
@@ -53,7 +53,7 @@ A separate offline raster diagnostic sampled 582 poses across working, idle, thi
 
 ## Self-contained executable update (0.2.0)
 
-Fresh aggregate checks pass: root 119 Node + 390 component tests (509); desktop 162 Node + 86 component tests (248). Total: 757 passing tests, no skips. Both production builds and the observer typecheck pass. These counts include 39 focused runtime/worker tests, 16 independent executable integration checks, and 8 packaging tests.
+Fresh aggregate checks pass: root 119 Node + 390 component tests (509); desktop 168 Node + 86 component tests (254). Total: 763 passing tests, no skips. Both production builds and the observer typecheck pass. These counts include 39 focused runtime/worker tests, 16 independent executable integration checks, and 14 packaging/CLI tests.
 
 The packaged app bundles the unchanged bridge modules, full root web build, observer source and Electron runtime. A bounded 4 KiB, 1.5-second loopback health read accepts only the existing Pi Office service/protocol. Only connection refusal permits an app-owned bridge launch. Conflicting or unresponsive listeners produce fixed, non-secret error messages; no ingest/write request or process kill is sent to them. The renderer does not poll until the bridge is verified as external or owned.
 
@@ -64,3 +64,9 @@ The stable credential file is outside temporary extraction. Its contents never e
 The portable packager verifies both the assembled application and the actual executable's embedded payload, including Electron x64 PE architecture, ASAR source byte identity, all web files, unchanged bridge modules and observer. An EXE SHA256 and JSON verification report are emitted. This is package inspection, not a native Windows launch, visual recording or end-to-end Pi test.
 
 Additional Windows acceptance checks: first launch without Node/npm, offline launch once the EXE is downloaded, moving/relaunching the EXE, simultaneous second launch, user-data paths containing spaces/quotes, no existing bridge, a healthy existing bridge, unrelated port conflict, quit during startup, bridge crash, parent crash, explicit observer connection from a project folder, and full web office opened on demand. Confirm external bridges and all Pi sessions survive app quit. Code signing and interactive Windows acceptance remain outstanding.
+
+### Windows CI verifier correction
+
+The initial Windows build produced the EXE, but verification rejected its nested renderer paths because the ASAR inventory uses forward slashes while app-builder-lib splits lookup directories using the host separator. Verification now converts inventory paths at the reader boundary. A regression loads the actual installed ASAR reader with both Windows and POSIX path semantics, reproducing the original failure and confirming the corrected lookup. No payload integrity check is weakened.
+
+Both packaging commands now fail closed on synchronous or asynchronous errors, including earlier exit hooks that would otherwise reset the status. Five child-process tests cover these cases and prove a malformed executable cannot create a checksum or verification report. The workflow independently requires every release file and checks its size/hash/report before upload. No failed package was released.

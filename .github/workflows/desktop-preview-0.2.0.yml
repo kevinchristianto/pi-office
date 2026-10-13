@@ -50,6 +50,22 @@ jobs:
         run: node -e "if(require('./desktop/package.json').version!=='0.2.0')process.exit(1)"
       - run: npm run package:win
         working-directory: desktop
+      - name: Require successful package verification before upload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Get-Item -LiteralPath 'desktop/release/Pi-Office-0.2.0-win-x64-portable.exe'
+          $report = Get-Content -Raw -LiteralPath 'desktop/release/package-verification.json' | ConvertFrom-Json
+          $checksum = (Get-Content -Raw -LiteralPath 'desktop/release/Pi-Office-0.2.0-win-x64-portable.exe.sha256').Trim()
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe.FullName).Hash.ToLowerInvariant()
+          if ($report.artifact -cne $exe.Name -or $report.bytes -ne $exe.Length -or $report.sha256 -cne $hash) {
+            throw 'Executable does not match package verification report'
+          }
+          if ($report.packageContentsVerified -ne $true -or $report.signed -ne $false) {
+            throw 'Required portable preview verification is missing'
+          }
+          if ($checksum -cne "$hash  $($exe.Name)") { throw 'Checksum file does not match executable' }
+          Write-Host "Verified $($exe.Name): $hash ($($exe.Length) bytes)"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: desktop-preview-0.2.0
