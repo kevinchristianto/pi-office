@@ -46,7 +46,7 @@ jobs:
       - run: npm ci
       - run: npm ci
         working-directory: desktop
-      - name: Check Windows URLs and resize geometry
+      - name: Check cross-platform file URLs and Windows resize geometry
         run: node --test test/renderer-url.test.cjs test/window-geometry.test.cjs test/audit-free-resize-geometry.test.cjs
         working-directory: desktop
       - name: Verify approved preview version

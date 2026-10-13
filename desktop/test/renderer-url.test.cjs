@@ -8,22 +8,27 @@ const vm = require("node:vm");
 const { createRequire } = require("node:module");
 const { EventEmitter } = require("node:events");
 const url = require("node:url");
-const { isTrustedSender } = require("../core.cjs");
 
-// Real application modules with Windows path/URL semantics on every CI host.
+// Real application modules with explicit Windows or POSIX semantics on every CI host.
+// Never let a POSIX fixture inherit the Windows runner's URL decoder.
 // This is not a native Windows/Electron launch.
 const windowsUrl = {
   ...url,
   fileURLToPath: (value) => url.fileURLToPath(value, { windows: true }),
   pathToFileURL: (value) => url.pathToFileURL(value, { windows: true }),
 };
-function windowsModule(name, overrides = {}) {
+function platformModule(name, windows, overrides = {}) {
   const filename = path.resolve(__dirname, "..", name);
   const nativeRequire = createRequire(filename);
   const module = { exports: {} };
   const require = (id) => {
-    if (id === "node:path") return path.win32;
-    if (id === "node:url") return windowsUrl;
+    if (id === "node:path") return windows ? path.win32 : path.posix;
+    if (id === "node:url")
+      return {
+        ...url,
+        fileURLToPath: (value) => url.fileURLToPath(value, { windows }),
+        pathToFileURL: (value) => url.pathToFileURL(value, { windows }),
+      };
     if (Object.hasOwn(overrides, id)) return overrides[id];
     return nativeRequire(id);
   };
@@ -35,8 +40,9 @@ function windowsModule(name, overrides = {}) {
   )(require, module, module.exports, path.dirname(filename));
   return module.exports;
 }
-const windowsCore = windowsModule("core.cjs");
-const { createCompanion, IPC } = windowsModule("main.cjs", {
+const windowsCore = platformModule("core.cjs", true);
+const posixCore = platformModule("core.cjs", false);
+const { createCompanion, IPC } = platformModule("main.cjs", true, {
   "./core.cjs": windowsCore,
 });
 
@@ -181,9 +187,16 @@ test("POSIX comparison preserves case and accepts equivalent bracket encoding", 
   const { event, window } = senderFixture(
     expected.replace("%5BPreview%5D", "[Preview]"),
   );
-  assert.equal(isTrustedSender(event, window, expected), true);
+  assert.equal(posixCore.isTrustedSender(event, window, expected), true);
+  // The same drive-less fixture is deliberately invalid for Windows. This
+  // asserts that the two platform adapters cannot silently use host defaults.
+  assert.equal(windowsCore.isTrustedSender(event, window, expected), false);
   assert.equal(
-    isTrustedSender(event, window, expected.replace("Office", "office")),
+    posixCore.isTrustedSender(
+      event,
+      window,
+      expected.replace("Office", "office"),
+    ),
     false,
   );
 });
