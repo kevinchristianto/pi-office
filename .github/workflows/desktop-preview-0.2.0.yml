@@ -62,6 +62,7 @@ jobs:
             desktop/release/package-verification.json
 
   publish:
+    if: github.repository == 'kevinchristianto/pi-office' && github.ref == 'refs/heads/feature/desktop-companion'
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 10
