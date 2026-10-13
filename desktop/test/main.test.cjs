@@ -2,7 +2,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
-const { pathToFileURL } = require("node:url");
 const {
   createCompanion,
   IPC,
@@ -14,6 +13,8 @@ function fixture({
   shortcut = true,
   trayFails = false,
   singleton = true,
+  geometryStore = null,
+  resizeClock,
 } = {}) {
   const app = new EventEmitter();
   app.setName = (name) => {
@@ -52,8 +53,8 @@ function fixture({
       super();
       this.options = options;
       this.bounds = {
-        x: 50,
-        y: 50,
+        x: options.x ?? 50,
+        y: options.y ?? 50,
         width: options.width,
         height: options.height,
       };
@@ -112,6 +113,9 @@ function fixture({
       this.bounds.width = width;
       this.bounds.height = height;
     }
+    setBounds(bounds) {
+      this.bounds = { ...bounds };
+    }
     show() {
       this.visible = true;
       this.emit("show");
@@ -124,9 +128,9 @@ function fixture({
       this.minimized = false;
       this.emit("restore");
     }
-    async loadFile(filename) {
+    async loadURL(url) {
       this.loads = (this.loads || 0) + 1;
-      this.webContents.mainFrame.url = pathToFileURL(filename).href;
+      this.webContents.mainFrame.url = url;
       this.webContents.emit("did-finish-load");
       this.emit("ready-to-show");
     }
@@ -184,15 +188,17 @@ function fixture({
         external.push(url);
       },
     },
-    screen: {
+    screen: Object.assign(new EventEmitter(), {
       getDisplayMatching: () => ({
         workArea: { x: 0, y: 0, width: 1200, height: 800 },
       }),
-    },
+    }),
   };
   const companion = createCompanion(electron, {
     env: { PI_OFFICE_PORT: "5417" },
     baseDirectory: "/app",
+    geometryStore,
+    ...(resizeClock ? { resizeClock } : {}),
     fetchSnapshot: ({ signal }) =>
       new Promise((resolve, reject) =>
         requests.push({ signal, resolve, reject }),
@@ -448,7 +454,7 @@ test("second instance exits without creating window, IPC or bridge requests", as
 test("old crash-recovery result cannot resume polling after a newer renderer crash", async (t) => {
   const { companion, window, requests } = await started(t);
   const reloads = [];
-  window.loadFile = () =>
+  window.loadURL = () =>
     new Promise((resolve, reject) => reloads.push({ resolve, reject }));
   window.webContents.emit("render-process-gone");
   companion.restore();
@@ -487,4 +493,272 @@ test("a disappeared IPC frame cannot break native recovery or state transitions"
   await flush();
   assert.equal(window.loads, 2);
   assert.equal(window.ignoresMouse, false);
+});
+
+function resizeClockFixture() {
+  let at = 1000;
+  let id = 0;
+  const timers = new Map();
+  return {
+    now: () => at,
+    setTimer(fn, ms) {
+      const key = ++id;
+      timers.set(key, { fn, at: at + ms });
+      return key;
+    },
+    clearTimer: (key) => timers.delete(key),
+    timers,
+    advance(ms) {
+      at += ms;
+      for (const [key, timer] of [...timers])
+        if (timer.at <= at) {
+          timers.delete(key);
+          timer.fn();
+        }
+    },
+  };
+}
+
+test("resize IPC validates one integer size-only payload and exact top-frame sender", async (t) => {
+  const f = await started(t);
+  const resize = f.handlers.get(IPC.resize);
+  for (const payload of [
+    null,
+    [],
+    {},
+    { width: 440 },
+    { width: 440, height: 260, x: 0 },
+    { width: NaN, height: 300 },
+    { width: Infinity, height: 300 },
+    { width: -1, height: 300 },
+    { width: 0, height: 300 },
+    { width: 440.5, height: 300 },
+    { width: "500", height: 300 },
+    { width: Number.MAX_SAFE_INTEGER + 1, height: 300 },
+  ])
+    assert.throws(() => resize(f.event, payload), /Untrusted/);
+  const size = { width: 700, height: 400 };
+  assert.throws(() => resize(f.event, size, "extra"), /Untrusted/);
+  assert.throws(() => resize({ ...f.event, sender: {} }, size), /Untrusted/);
+  assert.throws(
+    () => resize({ ...f.event, senderFrame: { ...f.event.senderFrame } }, size),
+    /Untrusted/,
+  );
+  const result = await resize(f.event, size);
+  assert.deepEqual(result.windowSize, size);
+  assert.deepEqual(structuredClone(result), result);
+  assert.equal(f.window.options.resizable, false);
+  const items = f.companion
+    .getTray()
+    .menu.find((item) => item.label === "Size").submenu;
+  assert(
+    items.every((item) => !item.checked),
+    "Custom geometry unchecks preset radios",
+  );
+});
+
+test("resize coalescing bounds native work to 20 Hz and applies the final size", async (t) => {
+  const clock = resizeClockFixture();
+  const f = await started(t, { resizeClock: clock });
+  const resize = f.handlers.get(IPC.resize);
+  await resize(f.event, { width: 500, height: 300 });
+  const first = resize(f.event, { width: 600, height: 350 });
+  const last = resize(f.event, { width: 900, height: 500 });
+  assert.equal(first, last, "Only one pending main-process promise is kept");
+  assert.equal(clock.timers.size, 1);
+  assert.equal(f.window.bounds.width, 500);
+  clock.advance(49);
+  assert.equal(f.window.bounds.width, 500);
+  clock.advance(1);
+  assert.deepEqual((await last).windowSize, { width: 900, height: 500 });
+  assert.equal(clock.timers.size, 0);
+});
+
+for (const action of [
+  "hide",
+  "lock",
+  "minimize",
+  "crash",
+  "close",
+  "quit",
+  "dispose",
+  "compact",
+]) {
+  test(`queued resize settles without late native work after ${action}`, async (t) => {
+    const clock = resizeClockFixture();
+    const f = await started(t, { resizeClock: clock });
+    const resize = f.handlers.get(IPC.resize);
+    await resize(f.event, { width: 500, height: 300 });
+    const rejected = assert.rejects(
+      resize(f.event, { width: 900, height: 500 }),
+      /cancelled/,
+    );
+    if (action === "minimize") {
+      f.window.minimized = true;
+      f.window.emit("minimize");
+    } else if (action === "crash")
+      f.window.webContents.emit("render-process-gone");
+    else if (action === "close")
+      f.window.emit("close", { preventDefault() {} });
+    else if (action === "dispose") f.companion.dispose();
+    else await f.companion.runCommand(action);
+    await rejected;
+    const bounds = { ...f.window.bounds };
+    clock.advance(100);
+    assert.deepEqual(f.window.bounds, bounds);
+    assert.equal(clock.timers.size, 0);
+    if (
+      [
+        "hide",
+        "lock",
+        "minimize",
+        "crash",
+        "close",
+        "quit",
+        "dispose",
+      ].includes(action)
+    )
+      assert.throws(
+        () => resize(f.event, { width: 600, height: 350 }),
+        /unavailable|Untrusted/,
+      );
+  });
+}
+
+for (const change of ["frame", "url"]) {
+  test(`queued resize rechecks the current ${change} before applying`, async (t) => {
+    const clock = resizeClockFixture();
+    const f = await started(t, { resizeClock: clock });
+    const resize = f.handlers.get(IPC.resize);
+    await resize(f.event, { width: 500, height: 300 });
+    const rejected = assert.rejects(
+      resize(f.event, { width: 900, height: 500 }),
+      /Untrusted/,
+    );
+    if (change === "frame")
+      f.window.webContents.mainFrame = { ...f.event.senderFrame };
+    else f.window.webContents.mainFrame.url += "#untrusted";
+    clock.advance(50);
+    await rejected;
+    assert.equal(f.window.bounds.width, 500);
+  });
+}
+
+test("resize clamps global/work-area limits with negative origins without applying scaleFactor", async (t) => {
+  const clock = resizeClockFixture();
+  const f = await started(t, { resizeClock: clock });
+  const resize = f.handlers.get(IPC.resize);
+  f.electron.screen.getDisplayMatching = () => ({
+    scaleFactor: 2,
+    workArea: { x: -6000, y: -500, width: 6000, height: 3000 },
+  });
+  await resize(f.event, {
+    width: Number.MAX_SAFE_INTEGER,
+    height: Number.MAX_SAFE_INTEGER,
+  });
+  assert.deepEqual(f.window.bounds, {
+    x: -4096,
+    y: 50,
+    width: 4096,
+    height: 2160,
+  });
+  clock.advance(50);
+  await resize(f.event, { width: 1, height: 1 });
+  assert.deepEqual(f.companion.getState().windowSize, {
+    width: 440,
+    height: 260,
+  });
+  f.electron.screen.getDisplayMatching = () => ({
+    scaleFactor: 1.25,
+    workArea: { x: -300, y: -200, width: 300, height: 200 },
+  });
+  clock.advance(50);
+  await resize(f.event, { width: 900, height: 700 });
+  assert.deepEqual(f.window.bounds, {
+    x: -300,
+    y: -200,
+    width: 300,
+    height: 200,
+  });
+  await f.companion.runCommand("roomy");
+  assert.deepEqual(f.window.bounds, {
+    x: -300,
+    y: -200,
+    width: 300,
+    height: 200,
+  });
+});
+
+test("geometry restore uses current work area and saves actual moved/rounded bounds on close", async (t) => {
+  const saved = [];
+  let flushes = 0,
+    disposals = 0;
+  const geometryStore = {
+    load: () => ({ x: 9000, y: -9000, width: 900, height: 500 }),
+    save: (bounds) => saved.push({ ...bounds }),
+    flush: () => {
+      flushes++;
+    },
+    dispose: () => {
+      disposals++;
+    },
+  };
+  const f = await started(t, { geometryStore });
+  assert.deepEqual(f.window.bounds, { x: 300, y: 0, width: 900, height: 500 });
+  Object.assign(f.window.bounds, { x: 100, y: 70 });
+  f.window.emit("move");
+  assert.deepEqual(saved.at(-1), f.window.bounds);
+  f.window.setBounds = (bounds) => {
+    f.window.bounds = { ...bounds, width: bounds.width + 1 };
+  };
+  await f.companion.runCommand("roomy");
+  assert.deepEqual(saved.at(-1), { x: 100, y: 70, width: 641, height: 380 });
+  assert.deepEqual(f.companion.getState().windowSize, {
+    width: 641,
+    height: 380,
+  });
+  f.window.emit("close", { preventDefault() {} });
+  assert.equal(flushes, 1);
+  f.companion.dispose();
+  f.companion.dispose();
+  assert.equal(disposals, 1);
+});
+
+test("screen changes resize and reposition to current DIP work area and listeners are removed on teardown", async (t) => {
+  const clock = resizeClockFixture();
+  const f = await started(t, { resizeClock: clock });
+  const resize = f.handlers.get(IPC.resize);
+  await resize(f.event, { width: 1100, height: 700 });
+  const rejected = assert.rejects(
+    resize(f.event, { width: 1000, height: 600 }),
+    /cancelled/,
+  );
+  f.electron.screen.getDisplayMatching = () => ({
+    scaleFactor: 2,
+    workArea: { x: -800, y: 20, width: 800, height: 500 },
+  });
+  f.electron.screen.emit("display-removed", {}, {});
+  await rejected;
+  assert.deepEqual(f.window.bounds, {
+    x: -800,
+    y: 20,
+    width: 800,
+    height: 500,
+  });
+  f.electron.screen.getDisplayMatching = () => ({
+    scaleFactor: 1.25,
+    workArea: { x: 10, y: -20, width: 300, height: 200 },
+  });
+  f.electron.screen.emit("display-metrics-changed", {}, {}, [
+    "workArea",
+    "scaleFactor",
+  ]);
+  assert.deepEqual(f.window.bounds, { x: 10, y: -20, width: 300, height: 200 });
+  f.companion.dispose();
+  for (const event of [
+    "display-added",
+    "display-removed",
+    "display-metrics-changed",
+  ])
+    assert.equal(f.electron.screen.listenerCount(event), 0);
 });

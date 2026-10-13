@@ -70,7 +70,7 @@ test("standalone verifier fails closed without fabricating a report or checksum"
   const releaseDir = path.join(desktopDir, "release");
   await fs.mkdir(fixturePackaging);
   await fs.mkdir(releaseDir);
-  for (const file of ["verify.cjs", "cli.cjs"]) {
+  for (const file of ["verify.cjs", "cli.cjs", "config.cjs"]) {
     await fs.copyFile(
       path.join(packagingDir, file),
       path.join(fixturePackaging, file),

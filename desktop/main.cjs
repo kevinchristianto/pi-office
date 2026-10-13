@@ -5,6 +5,12 @@ const { createBridgeRuntime } = require("./bridge-runtime.cjs");
 const { prepareObserverConnection } = require("./observer-connect.cjs");
 const { pathToFileURL } = require("node:url");
 const {
+  clampBounds,
+  isResizePayload,
+  createGeometryStore,
+  RESIZE_INTERVAL_MS,
+} = require("./window-geometry.cjs");
+const {
   PRESETS,
   parsePort,
   officeUrl,
@@ -17,6 +23,7 @@ const {
 const IPC = Object.freeze({
   state: "companion:get-state",
   command: "companion:command",
+  resize: "companion:resize",
   update: "companion:state",
 });
 const RESTORE_SHORTCUT = "Control+Shift+Space";
@@ -31,6 +38,12 @@ function createCompanion(
     fetchSnapshot,
     bridgeFactory = createBridgeRuntime,
     resourcesPath = process.resourcesPath,
+    geometryStore,
+    resizeClock = {
+      now: () => performance.now(),
+      setTimer: setTimeout,
+      clearTimer: clearTimeout,
+    },
   } = {},
 ) {
   const {
@@ -67,6 +80,9 @@ function createCompanion(
   let shortcutAvailable = false;
   let hideShortcutAvailable = false;
   let preset = "compact";
+  let pendingResize = null;
+  let resizeTimer = null;
+  let lastResizeAt = -Infinity;
   let pollState = {
     snapshot: null,
     connection: { status: "paused", lastSuccessAt: null, error: null },
@@ -89,7 +105,22 @@ function createCompanion(
     alwaysOnTop,
     locked,
     shortcutAvailable,
+    ...(isWindow() ? { windowSize: windowSize() } : {}),
   });
+  function windowSize() {
+    const { width, height } = window.getBounds();
+    return { width, height };
+  }
+  const rememberGeometry = () => {
+    if (isWindow() && !disposed) geometryStore?.save(window.getBounds());
+  };
+  const cancelResize = () => {
+    if (resizeTimer !== null) resizeClock.clearTimer(resizeTimer);
+    resizeTimer = null;
+    const pending = pendingResize;
+    pendingResize = null;
+    pending?.reject(new Error("Window resize cancelled"));
+  };
   const refreshMenu = () => {
     if (!tray || tray.isDestroyed()) return;
     tray.setContextMenu(
@@ -171,6 +202,8 @@ function createCompanion(
     },
   });
   const syncVisibility = () => {
+    if (!isWindow() || !window.isVisible() || window.isMinimized())
+      cancelResize();
     poller.setVisible(
       Boolean(
         isWindow() &&
@@ -194,30 +227,117 @@ function createCompanion(
     if (!isWindow()) return;
     const bounds = window.getBounds();
     const { workArea } = screen.getDisplayMatching(bounds);
-    const x = Math.max(
-      workArea.x,
-      Math.min(
-        bounds.x,
-        workArea.x + Math.max(0, workArea.width - bounds.width),
-      ),
-    );
-    const y = Math.max(
-      workArea.y,
-      Math.min(
-        bounds.y,
-        workArea.y + Math.max(0, workArea.height - bounds.height),
-      ),
-    );
-    if (x !== bounds.x || y !== bounds.y) window.setPosition(x, y);
+    const next = clampBounds(bounds, workArea);
+    if (Object.keys(next).some((key) => next[key] !== bounds[key]))
+      applyBounds(next, preset);
   };
+  const onDisplayChange = () => {
+    if (!isWindow() || quitting || disposed) return;
+    cancelResize();
+    try {
+      ensureOnScreen();
+      publish();
+    } catch {
+      /* A display can disappear again before the OS applies bounds. */
+    }
+  };
+  function applyBounds(requested, nextPreset = "custom") {
+    const target = window;
+    const previous = { ...target.getBounds() };
+    try {
+      const { workArea } = screen.getDisplayMatching(previous);
+      const bounds = clampBounds(requested, workArea);
+      // setSize clamps to the previous fixed window's minimum on Windows.
+      // setBounds updates those fixed-size constraints before resizing, without
+      // enabling manual resizing (which can break transparent windows).
+      target.setBounds(bounds);
+      const actual = target.getBounds();
+      // Fractional display scaling can round logical bounds by one DIP.
+      if (
+        ["x", "y", "width", "height"].some(
+          (key) =>
+            !Number.isSafeInteger(actual[key]) ||
+            Math.abs(actual[key] - bounds[key]) > 1,
+        )
+      )
+        throw new Error("Requested window size was not applied");
+      preset = nextPreset;
+      rememberGeometry();
+    } catch {
+      try {
+        if (!target.isDestroyed()) target.setBounds(previous);
+      } catch {
+        /* Native recovery remains available even if restoring bounds fails. */
+      }
+      // In particular, undo the tray radio item's optimistic native selection.
+      publish();
+      throw new Error("Could not apply the requested window size");
+    }
+  }
+  function canResize() {
+    if (
+      !isWindow() ||
+      quitting ||
+      disposed ||
+      locked ||
+      !window.isVisible() ||
+      window.isMinimized() ||
+      rendererFailed ||
+      reloadPending
+    )
+      throw new Error("Companion window unavailable for resizing");
+  }
+  function requestResize(event, size) {
+    canResize();
+    if (pendingResize) {
+      pendingResize.event = event;
+      pendingResize.size = { ...size };
+      return pendingResize.promise;
+    }
+    const apply = () => {
+      canResize();
+      if (!isTrustedSender(event, window, rendererUrl))
+        throw new Error("Untrusted companion resize");
+      lastResizeAt = resizeClock.now();
+      applyBounds({ ...window.getBounds(), ...size });
+      publish();
+      return getState();
+    };
+    const wait = RESIZE_INTERVAL_MS - (resizeClock.now() - lastResizeAt);
+    if (wait <= 0) return Promise.resolve(apply());
+    let resolve, reject;
+    const promise = new Promise((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    pendingResize = { event, size: { ...size }, promise, resolve, reject };
+    resizeTimer = resizeClock.setTimer(() => {
+      const pending = pendingResize;
+      pendingResize = null;
+      resizeTimer = null;
+      if (!pending) return;
+      try {
+        canResize();
+        if (!isTrustedSender(pending.event, window, rendererUrl))
+          throw new Error("Untrusted companion resize");
+        lastResizeAt = resizeClock.now();
+        applyBounds({ ...window.getBounds(), ...pending.size });
+        publish();
+        pending.resolve(getState());
+      } catch (error) {
+        pending.reject(error);
+      }
+    }, wait);
+    return promise;
+  }
   function restore() {
-    if (!isWindow() || quitting) return;
+    if (!isWindow() || quitting || disposed) return;
     unlock();
     if (rendererFailed && !reloadPending) {
       reloadPending = true;
       const target = window;
       const generation = rendererGeneration;
-      void target.loadFile(rendererPath).then(
+      void target.loadURL(rendererUrl).then(
         () => {
           if (
             !isWindow() ||
@@ -248,7 +368,7 @@ function createCompanion(
     syncVisibility();
   }
   function hide() {
-    if (!isWindow() || quitting) return;
+    if (!isWindow() || quitting || disposed) return;
     // A visible taskbar window alone is not sufficient recovery after hide().
     shortcutAvailable =
       shortcutAvailable && globalShortcut.isRegistered(RESTORE_SHORTCUT);
@@ -258,6 +378,7 @@ function createCompanion(
       );
     }
     unlock();
+    cancelResize();
     window.hide();
     syncVisibility();
   }
@@ -339,7 +460,7 @@ ${command}`,
   async function runCommand(command) {
     if (!isAllowedCommand(command))
       throw new Error("Unknown companion command");
-    if (!isWindow() || quitting)
+    if (!isWindow() || quitting || disposed)
       throw new Error("Companion window unavailable");
     switch (command) {
       case "toggle-top":
@@ -358,6 +479,7 @@ ${command}`,
           );
         }
         locked = true;
+        cancelResize();
         window.setMovable(false);
         window.setFocusable(false);
         window.setIgnoreMouseEvents(true, { forward: true });
@@ -374,9 +496,8 @@ ${command}`,
         break;
       case "compact":
       case "roomy":
-        preset = command;
-        window.setSize(PRESETS[command].width, PRESETS[command].height);
-        ensureOnScreen();
+        cancelResize();
+        applyBounds({ ...window.getBounds(), ...PRESETS[command] }, command);
         break;
       case "connect-pi":
         await connectPi();
@@ -390,6 +511,15 @@ ${command}`,
   }
   function dispose() {
     if (disposed) return;
+    cancelResize();
+    rememberGeometry();
+    geometryStore?.dispose();
+    for (const event of [
+      "display-added",
+      "display-removed",
+      "display-metrics-changed",
+    ])
+      screen.removeListener?.(event, onDisplayChange);
     disposed = true;
     poller.dispose();
     globalShortcut.unregisterAll();
@@ -398,6 +528,7 @@ ${command}`,
     tray = null;
     ipcMain.removeHandler(IPC.state);
     ipcMain.removeHandler(IPC.command);
+    ipcMain.removeHandler(IPC.resize);
   }
 
   const deny = (event) => event.preventDefault();
@@ -428,6 +559,7 @@ ${command}`,
       callback("");
     });
     contents.on("render-process-gone", () => {
+      cancelResize();
       rendererFailed = true;
       rendererGeneration++;
       reloadPending = false;
@@ -490,6 +622,26 @@ ${command}`,
     });
     await app.whenReady();
     if (quitting) return false;
+    if (geometryStore === undefined && typeof app.getPath === "function") {
+      try {
+        geometryStore = createGeometryStore({
+          directory: app.getPath("userData"),
+        });
+      } catch {
+        geometryStore = null;
+      }
+    }
+    let restoredBounds = null;
+    try {
+      const saved = geometryStore?.load();
+      if (saved)
+        restoredBounds = clampBounds(
+          saved,
+          screen.getDisplayMatching(saved).workArea,
+        );
+    } catch {
+      /* Malformed or inaccessible preferences fall back to Compact. */
+    }
     if (app.isPackaged) {
       bridgeRuntime = bridgeFactory({
         app,
@@ -513,6 +665,7 @@ ${command}`,
     secureSession(companionSession);
     window = new BrowserWindow({
       ...PRESETS.compact,
+      ...(restoredBounds || {}),
       title: "Pi Office Companion",
       frame: false,
       transparent: true,
@@ -544,6 +697,13 @@ ${command}`,
       },
     });
     window.setMenu(null);
+    if (restoredBounds)
+      preset =
+        Object.entries(PRESETS).find(
+          ([, size]) =>
+            size.width === restoredBounds.width &&
+            size.height === restoredBounds.height,
+        )?.[0] || "custom";
     secureContents(window.webContents);
     ipcMain.handle(IPC.state, (event, ...args) => {
       if (!isTrustedSender(event, window, rendererUrl) || args.length)
@@ -559,6 +719,15 @@ ${command}`,
         throw new Error("Untrusted companion command");
       }
       return runCommand(args[0]);
+    });
+    ipcMain.handle(IPC.resize, (event, ...args) => {
+      if (
+        !isTrustedSender(event, window, rendererUrl) ||
+        args.length !== 1 ||
+        !isResizePayload(args[0])
+      )
+        throw new Error("Untrusted companion resize");
+      return requestResize(event, args[0]);
     });
     createTray();
     try {
@@ -582,7 +751,18 @@ ${command}`,
     window.on("hide", syncVisibility);
     window.on("minimize", syncVisibility);
     window.on("restore", syncVisibility);
+    window.on("move", rememberGeometry);
+    window.on("resize", rememberGeometry);
+    for (const event of [
+      "display-added",
+      "display-removed",
+      "display-metrics-changed",
+    ])
+      screen.on?.(event, onDisplayChange);
     window.on("close", (event) => {
+      cancelResize();
+      rememberGeometry();
+      geometryStore?.flush();
       if (quitting) return;
       shortcutAvailable =
         shortcutAvailable && globalShortcut.isRegistered(RESTORE_SHORTCUT);
@@ -598,12 +778,16 @@ ${command}`,
       syncVisibility();
     });
     window.on("closed", () => {
+      cancelResize();
+      geometryStore?.flush();
       window = null;
       poller.setVisible(false);
     });
     // Never serve or embed the office website. This is a separate local renderer.
+    // loadFile uses legacy url.format, which does not escape literal percent
+    // signs. Load the same correctly encoded, fixed file URL that IPC validates.
     try {
-      await window.loadFile(rendererPath);
+      await window.loadURL(rendererUrl);
     } catch (error) {
       quit();
       throw new Error(`Unable to load built companion UI: ${error.message}`);

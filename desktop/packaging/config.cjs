@@ -2,6 +2,15 @@
 
 const path = require("node:path");
 const assert = require("node:assert/strict");
+const SHELL_FILES = Object.freeze([
+  "bridge-runtime.cjs",
+  "bridge-worker.cjs",
+  "core.cjs",
+  "main.cjs",
+  "observer-connect.cjs",
+  "preload.cjs",
+  "window-geometry.cjs",
+]);
 
 function createConfiguration(desktopDir) {
   const root = path.resolve(desktopDir, "..");
@@ -21,7 +30,7 @@ function createConfiguration(desktopDir) {
           },
         }
       : {}),
-    files: ["*.cjs", "!package.cjs", "package.json", "dist/**/*"],
+    files: [...SHELL_FILES, "package.json", "dist/**/*"],
     extraResources: [
       {
         from: path.join(root, "bridge"),
@@ -75,4 +84,8 @@ function validatePortableCompilerOptions(options) {
   return true;
 }
 
-module.exports = { createConfiguration, validatePortableCompilerOptions };
+module.exports = {
+  SHELL_FILES,
+  createConfiguration,
+  validatePortableCompilerOptions,
+};

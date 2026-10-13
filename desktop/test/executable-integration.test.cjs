@@ -8,7 +8,6 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
 const { createHash } = require("node:crypto");
-const { pathToFileURL } = require("node:url");
 const { createCompanion, IPC } = require("../main.cjs");
 const {
   prepareObserverConnection,
@@ -390,6 +389,9 @@ function fixture(
     setSize(width, height) {
       Object.assign(this.bounds, { width, height });
     }
+    setBounds(bounds) {
+      this.bounds = { ...bounds };
+    }
     show() {
       this.visible = true;
       this.emit("show");
@@ -398,9 +400,9 @@ function fixture(
       this.visible = false;
       this.emit("hide");
     }
-    async loadFile(filename) {
+    async loadURL(url) {
       await load;
-      this.webContents.mainFrame.url = pathToFileURL(filename).href;
+      this.webContents.mainFrame.url = url;
       this.webContents.emit("did-finish-load");
       this.emit("ready-to-show");
     }
@@ -460,6 +462,7 @@ function fixture(
     utilityProcess: {},
   };
   const companion = createCompanion(electron, {
+    geometryStore: null,
     env: { PI_OFFICE_PORT: "5417", PI_OFFICE_TOKEN: SECRET },
     baseDirectory: "/app",
     resourcesPath,

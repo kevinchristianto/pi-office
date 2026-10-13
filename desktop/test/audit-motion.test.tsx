@@ -89,7 +89,9 @@ function matchingValue(element: Element, rules: CSSStyleRule[], name: string) {
 }
 function loadStyles() {
   const node = document.createElement("style");
-  node.textContent = readFileSync("src/styles.css", "utf8");
+  node.textContent = ["src/styles.css", "src/resident-animations.css"]
+    .map((path) => readFileSync(path, "utf8"))
+    .join("\n");
   document.head.appendChild(node);
   return { node, sheet: node.sheet! };
 }
@@ -276,11 +278,15 @@ describe("independent motion lifecycle audit", () => {
     );
     expect(document.querySelector(".detail-portrait .resident-art")).toBe(svg);
     expect(svg.classList.contains("activity-static")).toBe(true);
-    expect(screen.getByText("Historical")).toBeTruthy();
+    expect(
+      screen.getByText("Historical", { selector: ".state-tag" }),
+    ).toBeTruthy();
     expect(screen.getByText("Build Ada")).toBeTruthy();
     push(snapshot([agent("Ada", "offline")]));
     expect(svg.classList.contains("activity-static")).toBe(true);
-    expect(screen.getByText("Historical")).toBeTruthy();
+    expect(
+      screen.getByText("Historical", { selector: ".state-tag" }),
+    ).toBeTruthy();
   });
 
   it("keeps visible attention markers for waiting and error with reduced motion", async () => {
@@ -288,9 +294,12 @@ describe("independent motion lifecycle audit", () => {
     await show();
     const { sheet } = loadStyles();
     const reduced = rulesOf(sheet, "(prefers-reduced-motion: reduce)");
-    const bubbles = [...document.querySelectorAll(".attention-bubble")];
+    const bubbles = [...document.querySelectorAll(".resident-status-bubble")];
     expect(bubbles).toHaveLength(2);
-    expect(bubbles.every((node) => node.textContent?.trim())).toBe(true);
+    expect(bubbles.map((node) => node.textContent?.trim()).sort()).toEqual([
+      "Error",
+      "Needs input",
+    ]);
     for (const bubble of bubbles) {
       expect(matchingValue(bubble, reduced, "display")).not.toBe("none");
       expect(matchingValue(bubble, reduced, "animation")).toBe("none");
@@ -390,7 +399,7 @@ describe("independent CSS and resource audit", () => {
       const gesture = svg.querySelector(`.${state}-arm`)!;
       expect(matchingValue(gesture, rules, "display")).toBe("inline");
       expect(matchingValue(gesture, rules, "animation")).toMatch(
-        /resident-(?:chin|request|temple) /,
+        /resident-(?:chin|request|temple)-expressive /,
       );
       for (const deskArm of svg.querySelectorAll(".desk-arm-right"))
         expect(matchingValue(deskArm, rules, "display")).toBe("none");
@@ -468,7 +477,13 @@ describe("independent CSS and resource audit", () => {
       .filter((name) => /\.tsx?$/.test(name))
       .map((name) => readFileSync(`src/${name}`, "utf8"))
       .join("\n");
-    expect(source).not.toMatch(
+    expect(source).not.toMatch(/\b(?:requestAnimationFrame|setInterval)\s*\(/);
+    // The dropdowns use bounded one-shot focus-restoration timeouts. Portrait
+    // rendering itself must still be entirely declarative and timer-free.
+    const motionSource = ["AgentPortrait.tsx", "residentMotion.ts"]
+      .map((name) => readFileSync(`src/${name}`, "utf8"))
+      .join("\n");
+    expect(motionSource).not.toMatch(
       /\b(?:requestAnimationFrame|setInterval|setTimeout)\s*\(/,
     );
     expect(source).not.toMatch(/\b(?:fetch|WebSocket|EventSource)\s*\(/);

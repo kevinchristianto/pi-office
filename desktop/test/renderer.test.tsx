@@ -142,7 +142,12 @@ describe("companion renderer", () => {
     expect(within(dock).getAllByRole("button")).toHaveLength(3);
     expect(within(dock).queryByText("Old")).toBeNull();
     expect(screen.getByText("2 history")).toBeTruthy();
-    expect(dock.querySelectorAll(".attention-bubble")).toHaveLength(2);
+    expect(dock.querySelectorAll(".attention-bubble")).toHaveLength(0);
+    expect(
+      [...dock.querySelectorAll(".resident-status-text")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["Working", "Error", "Needs input"]);
   });
   it("opens read-only task and project details, closes with Escape and restores focus", async () => {
     await show(current);
@@ -206,7 +211,9 @@ describe("companion renderer", () => {
       screen.getByRole("button", { name: "Ada, Working, garden" }),
     );
     push(live([session("garden", [agent("Ada", { state: "offline" })])]));
-    expect(screen.getByText("Historical")).toBeTruthy();
+    expect(
+      screen.getByText("Historical", { selector: ".state-tag" }),
+    ).toBeTruthy();
     expect(screen.getByText("Last state")).toBeTruthy();
     push(live([]));
     expect(
@@ -239,7 +246,7 @@ describe("companion renderer", () => {
       within(screen.getByLabelText("Current agents")).getAllByRole("button"),
     ).toHaveLength(1);
   });
-  it("limits animated dock residents to eight and allows the full current roster", async () => {
+  it("renders more than eight residents without squeezing and keeps the list shortcut", async () => {
     await show(
       live([
         session(
@@ -250,7 +257,8 @@ describe("companion renderer", () => {
     );
     expect(
       within(screen.getByLabelText("Current agents")).getAllByRole("button"),
-    ).toHaveLength(8);
+    ).toHaveLength(13);
+    expect(screen.getByText("All 13")).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "View all 13 current agents" }),
     );
@@ -262,9 +270,8 @@ describe("companion renderer", () => {
     await show(
       live([session("one", [agent("Ada")]), session("two", [agent("Bob")])]),
     );
-    fireEvent.change(screen.getByLabelText("Filter by project"), {
-      target: { value: 'directory:"/projects/two"' },
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Filter by project" }));
+    fireEvent.click(screen.getByRole("option", { name: "two" }));
     expect(
       screen.queryByRole("button", { name: "Ada, Working, one" }),
     ).toBeNull();
@@ -363,12 +370,10 @@ describe("companion renderer", () => {
     expect(screen.queryByText("Click-through lock")).toBeNull();
     command.mockRejectedValueOnce(new Error("IPC unavailable"));
     fireEvent.click(screen.getByLabelText("Always on top"));
-    await screen.findByText(
-      "That window action didn't finish. Please try again.",
-    );
+    await screen.findByText("Couldn't change always-on-top. Try again.");
     fireEvent.click(screen.getByLabelText("Dismiss notice"));
     expect(
-      screen.queryByText("That window action didn't finish. Please try again."),
+      screen.queryByText("Couldn't change always-on-top. Try again."),
     ).toBeNull();
   });
   it("pauses animation on visibility changes and cleans up subscriptions", async () => {

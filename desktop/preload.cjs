@@ -24,6 +24,18 @@ contextBridge.exposeInMainWorld(
         return Promise.reject(new Error("Unknown companion command"));
       return ipcRenderer.invoke("companion:command", name);
     },
+    resize: (width, height) => {
+      if (
+        !Number.isSafeInteger(width) ||
+        width <= 0 ||
+        !Number.isSafeInteger(height) ||
+        height <= 0
+      )
+        return Promise.reject(
+          new Error("Expected positive integer window dimensions"),
+        );
+      return ipcRenderer.invoke("companion:resize", { width, height });
+    },
     onState: (callback) => {
       if (typeof callback !== "function")
         throw new TypeError("Expected a state callback");

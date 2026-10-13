@@ -234,9 +234,8 @@ async function verifyPackage({
   const asar = await readAsar(path.join(unpacked, "resources", "app.asar"));
   verifyAppMetadata(metadata, await asar.readJson("package.json"));
   const files = asarFiles(asar.header);
-  const shellFiles = (await fs.readdir(desktopDir))
-    .filter((file) => file.endsWith(".cjs") && file !== "package.cjs")
-    .sort();
+  const { SHELL_FILES } = require("./config.cjs");
+  const shellFiles = [...SHELL_FILES].sort();
   const rendererFiles = (await fileList(path.join(desktopDir, "dist"))).map(
     (file) => `dist/${file}`,
   );

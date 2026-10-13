@@ -1,23 +1,49 @@
 import { paletteFor } from "./model";
-import { residentActivity } from "./residentMotion";
+import { residentActivity, residentStatus } from "./residentMotion";
+import "./resident-animations.css";
 
 /** Tiny articulated residents. Pose nodes stay mounted across bridge snapshots. */
 export function AgentPortrait({
   identity,
   state,
   historical = false,
+  connected = true,
 }: {
   identity: string;
   state: string;
   historical?: boolean;
+  connected?: boolean;
 }) {
-  const activity = residentActivity(state, historical);
+  const activity = residentActivity(state, historical || !connected);
+  const status = residentStatus(state, historical, connected);
   return (
     <svg
       className={`resident-art palette-${paletteFor(identity)} activity-${activity}`}
-      viewBox="0 0 84 82"
+      viewBox="0 -22 84 104"
       aria-hidden="true"
     >
+      {/* Decorative duplicate of the accessible parent status. Never dialogue. */}
+      <g className="resident-status-bubble">
+        <path className="resident-status-tail" d="M37.5 0 L42 4 L46.5 0" />
+        <rect
+          className="resident-status-surface"
+          x="1.5"
+          y="-21"
+          width="81"
+          height="21"
+          rx="7"
+        />
+        <text
+          className="resident-status-text"
+          x="42"
+          y="-6"
+          textAnchor="middle"
+          textLength={status.length > 8 ? 70 : undefined}
+          lengthAdjust="spacingAndGlyphs"
+        >
+          {status}
+        </text>
+      </g>
       <ellipse className="resident-shadow" cx="42" cy="74" rx="27" ry="4" />
       <path
         className="chair"
@@ -66,10 +92,10 @@ export function AgentPortrait({
         d="M26 55.5 H58 M25.5 57.5 H58.5 M25 59.5 H59 M27.5 55 V60 M56.5 55 V60"
       />
       <g className="typing-arm-left">
-        <path className="arm arm-left" d="M28 49 Q21.5 55 25.5 57" />
+        <path className="arm arm-left" d="M28 49 Q18.5 54 25.5 57" />
       </g>
       <g className="typing-arm-right desk-arm-right">
-        <path className="arm arm-right" d="M55 49 Q62.5 55 58.5 57" />
+        <path className="arm arm-right" d="M55 49 Q65.5 54 58.5 57" />
       </g>
       {/* Wrists meet the keyboard at its sides; the foreground lid masks travel. */}
       <g className="typing-hand-left">
@@ -131,9 +157,9 @@ export function AgentPortrait({
         <path className="laptop-edge" d="M28 61 H56" />
       </g>
       <g className="thought-bubbles resident-gesture">
-        <circle cx="67" cy="25" r="2" />
-        <circle cx="72" cy="17" r="3" />
-        <circle cx="76" cy="7" r="4" />
+        <circle cx="68" cy="25" r="1.8" />
+        <circle cx="73" cy="18" r="2.5" />
+        <circle cx="76" cy="10" r="3.2" />
       </g>
     </svg>
   );

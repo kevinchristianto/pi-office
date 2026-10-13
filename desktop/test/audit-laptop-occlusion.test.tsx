@@ -300,7 +300,9 @@ function portrait(state: string) {
 
 beforeEach(() => {
   const style = document.createElement("style");
-  style.textContent = readFileSync("src/styles.css", "utf8");
+  style.textContent = ["src/styles.css", "src/resident-animations.css"]
+    .map((path) => readFileSync(path, "utf8"))
+    .join("\n");
   document.head.appendChild(style);
   rules = [...style.sheet!.cssRules].filter(
     (rule) => rule.type === CSSRule.STYLE_RULE,
@@ -412,7 +414,7 @@ describe("independent laptop physical-geometry audit", () => {
       for (let phase = 0; phase <= 1000; phase++) {
         // Sample 1,001 distinct phases of both synchronized typing hands, with
         // both exact lift extrema and two complete nested finger-tap cycles.
-        const t = (phase * 0.84) / 1000;
+        const t = (phase * 0.56) / 1000;
         const handMatrix = sample.matrix(hand, t);
         const box = bounds(outline.map((p) => point(handMatrix, p)));
         const wristInPalm = point(
@@ -471,10 +473,10 @@ describe("independent laptop physical-geometry audit", () => {
   });
 
   it.each([
-    ["working", 33.6],
-    ["thinking", 6],
-    ["waiting", 5.6],
-    ["error", 7],
+    ["working", 2.8],
+    ["thinking", 3.8],
+    ["waiting", 3.2],
+    ["error", 4.6],
   ] as const)(
     "keeps %s pose inside its portrait with exactly two visible forearms across a full cycle",
     (state, duration) => {
@@ -487,7 +489,7 @@ describe("independent laptop physical-geometry audit", () => {
       expect(arms).toHaveLength(2);
       const moving = [
         ...svg.querySelectorAll(
-          ".arm, .typing-hand-left .skin, .typing-hand-right .skin, .resident-gesture .skin, .thought-bubbles circle",
+          ".arm, .typing-hand-left .skin, .typing-hand-right .skin, .resident-gesture .skin, .thought-bubbles circle, .resident-head path, .resident-head ellipse",
         ),
       ].filter(sample.visible);
       const geometry = moving.map((element) => ({
@@ -506,6 +508,8 @@ describe("independent laptop physical-geometry audit", () => {
           expect(b.left - pad).toBeGreaterThanOrEqual(0);
           expect(b.right + pad).toBeLessThanOrEqual(84);
           expect(b.top - pad).toBeGreaterThanOrEqual(0);
+          if (element.closest(".resident-head"))
+            expect(b.top - pad).toBeGreaterThan(4.5); // fixed speech-tail clearance
           expect(b.bottom + pad).toBeLessThanOrEqual(82);
         }
       }

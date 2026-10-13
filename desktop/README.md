@@ -2,9 +2,9 @@
 
 An optional 2D desktop dock for Pi Office. The web office, observer, and web commands are unchanged. The portable Windows executable includes Electron, the local bridge, the full built web office, and the observer source. It reuses a compatible running bridge or starts its own loopback-only bridge. It never registers another observer or loads the 3D scene in the background.
 
-## Portable Windows executable (0.2.0)
+## Portable Windows executable (0.2.1)
 
-1. Run `Pi-Office-0.2.0-win-x64-portable.exe`. There is no separate npm install/start or first-launch Electron download. Portable means one self-extracting executable, not an installer; extraction takes disk space and may take a moment.
+1. Run `Pi-Office-0.2.1-win-x64-portable.exe`. There is no separate npm install/start or first-launch Electron download. Portable means one self-extracting executable, not an installer; extraction takes disk space and may take a moment.
 2. The dock starts the bundled bridge if nothing is listening on the configured port. A healthy existing Pi Office bridge is reused and left running on exit. An unrelated or incompatible service on the port is reported as an error; it is not stopped or replaced.
 3. Open the options menu (or tray menu) and choose **Connect Pi…**. For an app-owned bridge, copy the provided PowerShell command and run it from your project folder. Pi must already be installed. This explicitly starts Pi with the bundled observer; it does not change persistent Pi settings or existing sessions. Do not load a second copy of the observer.
 4. For an existing external bridge, keep using its existing observer connection or `CONNECT-PI.cmd`.
@@ -28,11 +28,16 @@ Node 22.20+ is required for development. Electron is downloaded from its officia
 
 If your existing bridge uses a different port, set `PI_OFFICE_PORT` to the same numeric port before starting the companion. Only `http://127.0.0.1:<port>` is supported; remote addresses and arbitrary URLs are intentionally unsupported.
 
+## Preview 0.2.1 changes
+
+Renderer controls now use the same canonical local file URL for loading and strict IPC validation, including Windows extraction paths with special characters. Compact and Roomy use checked bounds changes so shrinking after enlargement is no longer clamped by a fixed-size window minimum. The project picker and options menu share the cream/sage styling and keyboard navigation. Above-head status bubbles and clearer work/thinking/attention gestures follow bridge state; reduced-motion, hidden and disconnected views remain quiet.
+
 ## Controls
 
 - Drag the header to move the dock.
 - Select an agent for its task, status, and project. This is a read-only view.
-- Pin toggles always-on-top. Size presets avoid transparent-window resizing issues on Windows.
+- Pin toggles always-on-top. Drag the bottom-right grip to resize freely, or focus it and use arrow keys (Shift for larger steps). Compact and Roomy remain quick size shortcuts. The grip is disabled while click-through is locked.
+- The dock remembers its size and position. Restored bounds are kept inside the current monitor work area; resizing uses device-independent pixels.
 - Lock enables click-through, but only when the recovery shortcut was successfully registered.
 - **Ctrl+Shift+Space** restores, unlocks, and focuses the companion.
 - **Ctrl+Shift+H** hides it. The tray also offers restore/unlock, show/hide, pin, size presets, and Quit.
@@ -74,3 +79,11 @@ The motion preview is software-rendered from the implemented SVG and CSS keyfram
 ## Laptop depth correction (preview 0.1.2)
 
 Typing wrists and fingers now target a visible rear keyboard deck. The opaque laptop lid is painted in front of every hand and forearm, including thinking and attention gestures, so motion is hidden correctly instead of crossing the lid. The lid has the requested Apple silhouette and leaf. This corrects a real layer-order error in 0.1.1; it is not just a preview-video adjustment.
+
+## Responsive window sizing
+
+The transparent dock uses a custom corner grip instead of native window-edge resizing. Electron warns that enabling native resizing can break transparent windows on some platforms. The grip requests bounded size changes through the isolated preload; the main process validates the sender and dimensions and applies checked window bounds. Compact (440×260) and Roomy (640×380) remain shortcuts. The normal minimum is 440×260; an unusually small monitor work area takes precedence. Maximum dimensions are 4096×2160 and never exceed the selected monitor work area.
+
+Wider windows gain agent columns. Narrower windows wrap and scroll; taller windows reveal more rows. Portraits stay capped rather than stretching with the window. Long names truncate with their full text available in the agent detail view. Dropdowns scroll within the dock. The illustrated roster is bounded to 64 agents, with an explicit shown/total count and a current-list shortcut for every agent. Hidden and offscreen illustrations pause rather than continuing unnecessary animation.
+
+The resize grip is focusable: arrow keys adjust by 16 DIP, Shift+arrow by 64 DIP. Pointer cancellation or Escape stops a drag. Geometry is the only preference saved by resizing; no task text or bridge credential is written to the window-state file. Native Windows transparency, dragging, DPI changes and monitor transitions still need interactive acceptance testing.

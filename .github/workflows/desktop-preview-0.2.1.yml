@@ -1,0 +1,132 @@
+name: Publish desktop preview 0.2.1
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/desktop-preview-0.2.1.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-preview-0.2.1
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run check
+      - run: npm run check
+        working-directory: desktop
+
+  package:
+    needs: validate
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm ci
+        working-directory: desktop
+      - name: Check Windows URLs and resize geometry
+        run: node --test test/renderer-url.test.cjs test/window-geometry.test.cjs test/audit-free-resize-geometry.test.cjs
+        working-directory: desktop
+      - name: Verify approved preview version
+        run: node -e "if(require('./desktop/package.json').version!=='0.2.1')process.exit(1)"
+      - run: npm run package:win
+        working-directory: desktop
+      - name: Require successful package verification before upload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Get-Item -LiteralPath 'desktop/release/Pi-Office-0.2.1-win-x64-portable.exe'
+          $report = Get-Content -Raw -LiteralPath 'desktop/release/package-verification.json' | ConvertFrom-Json
+          $checksum = (Get-Content -Raw -LiteralPath 'desktop/release/Pi-Office-0.2.1-win-x64-portable.exe.sha256').Trim()
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe.FullName).Hash.ToLowerInvariant()
+          if ($report.artifact -cne $exe.Name -or $report.bytes -ne $exe.Length -or $report.sha256 -cne $hash) {
+            throw 'Executable does not match package verification report'
+          }
+          if ($report.packageContentsVerified -ne $true -or $report.signed -ne $false) {
+            throw 'Required portable preview verification is missing'
+          }
+          if ($checksum -cne "$hash  $($exe.Name)") { throw 'Checksum file does not match executable' }
+          Write-Host "Verified $($exe.Name): $hash ($($exe.Length) bytes)"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: desktop-preview-0.2.1
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          path: |
+            desktop/release/Pi-Office-0.2.1-win-x64-portable.exe
+            desktop/release/Pi-Office-0.2.1-win-x64-portable.exe.sha256
+            desktop/release/package-verification.json
+
+  publish:
+    if: github.repository == 'kevinchristianto/pi-office' && github.ref == 'refs/heads/main'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: desktop-preview-0.2.1
+          path: release
+      - name: Verify asset bytes and report
+        working-directory: release
+        run: |
+          sha256sum --check Pi-Office-0.2.1-win-x64-portable.exe.sha256
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          p = pathlib.Path('Pi-Office-0.2.1-win-x64-portable.exe')
+          r = json.loads(pathlib.Path('package-verification.json').read_text())
+          assert r['artifact'] == p.name
+          assert r['bytes'] == p.stat().st_size
+          assert r['sha256'] == hashlib.sha256(p.read_bytes()).hexdigest()
+          assert r['packageContentsVerified'] is True
+          assert r['signed'] is False
+          PY
+      - name: Publish this approved prerelease without replacing assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cat > notes.txt <<'NOTES'
+          Portable Windows x64 preview of Pi Office Companion 0.2.1, including freely resizable windows and responsive layouts.
+
+          Download the .exe and run it. The package includes Electron, the local bridge, and the web office assets; Node.js is not required for ordinary use. Existing Pi installation and observer configuration are still needed to observe agents.
+
+          This preview is unsigned, is not an installer, and has no automatic updater. Do not disable Windows security protections. Automated tests and package-content checks pass, but interactive Windows transparency, tray/hotkey behavior, browser rendering and real Pi workflows are not verified by this release build. See desktop/VERIFICATION.md at this release tag.
+
+          The .sha256 file and package-verification.json document the exact executable bytes. The desktop companion is now included on main. Existing web application files are unchanged.
+          NOTES
+          gh release create desktop-v0.2.1 \
+            --repo "$GH_REPO" --target "$RELEASE_COMMIT" \
+            --prerelease --latest=false \
+            --title 'Pi Office Companion 0.2.1 portable preview' \
+            --notes-file notes.txt \
+            release/Pi-Office-0.2.1-win-x64-portable.exe \
+            release/Pi-Office-0.2.1-win-x64-portable.exe.sha256 \
+            release/package-verification.json

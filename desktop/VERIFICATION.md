@@ -1,6 +1,6 @@
 # Desktop companion verification
 
-Target: self-contained portable companion preview 0.2.0, based on published Pi Office v0.5.2 (`c31177705021aedcb538b0a59e37f63ed8da60e8`) and desktop feature commit `293f83a1c3b2668814934e55accd6c47865e5da9`. Cloud Linux verification, 2026-10-13; a separate Windows CI job builds the release asset.
+Target: self-contained portable companion preview 0.2.1, based on published Pi Office v0.5.2 (`c31177705021aedcb538b0a59e37f63ed8da60e8`) and published desktop 0.2.0 commit `768c7799cd13d14b872d7fbb943f1d16beaad1fc`. Cloud Linux verification, 2026-10-13; a separate Windows CI job builds the release asset.
 
 ## Isolation
 
@@ -16,7 +16,7 @@ Transport and shell tests cover fixed IPv4 loopback GET-only access, rejected re
 
 A real HTTP integration test starts the unchanged bridge with a synthetic fixture and confirms that companion reads preserve the observer roster and revision. This does not install or alter the user's observer.
 
-Final `desktop/npm run check` passes: build plus **168 Node tests and 86 renderer/motion/geometry tests**, 254 desktop tests total, with no skips. Combined with the unchanged web suite, 763 tests pass. Renderer coverage includes startup subscription ordering, updates/removals, project and history selection, task inspection/back/escape, offline state, safe text, recovery controls, and every bridge status including completed.
+Current `desktop/npm run check` passes: build plus **227 Node tests and 201 renderer/motion/geometry tests**, 428 desktop tests total, with no skips. Combined with the unchanged web suite, 937 tests pass. Renderer coverage includes startup subscription ordering, updates/removals, project and history selection, task inspection/back/escape, offline state, safe text, recovery controls, and every bridge status including completed.
 
 `npm run package:win` creates an unsigned single portable EXE with an x86 NSIS bootstrap and x64 Electron payload. Its ASAR contains the desktop runtime helpers, preload, core, renderer and stripped package metadata. The unchanged bridge, observer and full web office are bundled separately under resources/office. No development node_modules are shipped. Exact source and embedded-payload verification must pass before a release asset is accepted. This includes Chromium/Electron overhead and is not a tiny native executable. Successful cross-packaging does not establish that the app has run on Windows.
 
@@ -70,3 +70,36 @@ Additional Windows acceptance checks: first launch without Node/npm, offline lau
 The initial Windows build produced the EXE, but verification rejected its nested renderer paths because the ASAR inventory uses forward slashes while app-builder-lib splits lookup directories using the host separator. Verification now converts inventory paths at the reader boundary. A regression loads the actual installed ASAR reader with both Windows and POSIX path semantics, reproducing the original failure and confirming the corrected lookup. No payload integrity check is weakened.
 
 Both packaging commands now fail closed on synchronous or asynchronous errors, including earlier exit hooks that would otherwise reset the status. Five child-process tests cover these cases and prove a malformed executable cannot create a checksum or verification report. The workflow independently requires every release file and checks its size/hash/report before upload. No failed package was released.
+
+## Menu, sizing and visible-state update (0.2.1)
+
+Before free-sizing integration, aggregate checks passed: 509 unchanged web tests plus 332 desktop tests, 841 total. Both production builds and observer typecheck pass. Earlier sections retain historical measurements and counts for their named versions.
+
+Electron 44.7.0 source establishes two relevant mechanisms. Its legacy loadFile URL construction differs from pathToFileURL for percent signs and brackets; Chromium also normalizes Windows drive letters. The renderer now loads the exact canonical URL used by the strict sender check. Validation retains exact webContents and main-frame identity, compares both current and invoking-frame URLs, and rejects hosts, query/fragment, malformed escapes and encoded separators. Only Windows drive-letter case is normalized. The user's exact extraction path was not obtained, so that path mismatch is a supported diagnosis rather than a native reproduction.
+
+Electron SetSize clamps to current minimum bounds. On Windows, SetBounds on a non-resizable window also updates its minimum/maximum to those bounds; enlargement therefore prevented a later SetSize shrink. Presets now use SetBounds, verify the actual result, and commit their selection only after success. Tests reproduce repeated Roomy→Compact from both tray and renderer, partial/ignored changes and rollback, rapid commands, crash reload and offscreen positioning. This source-backed regression model does not replace native Windows testing.
+
+The styled project listbox and options popover cover keyboard arrows, Home/End, Enter/Space, Escape, typeahead, Tab/focus recovery, outside dismissal, stable identities and bounded scrolling. Action-specific errors never echo native exception text. Late failures cannot overwrite a later action result or dismissed message. Opening either popup clears and invalidates old notices, preventing a prior error from covering compact-menu recovery actions; five regressions cover failure, reopen, next action and late rejection.
+
+Seventeen new portrait contracts check truthful captions, connection/history overrides, reduced motion, hidden pauses and source geometry. A 1,001-phase audit checks keyboard contact, two arms, foreground opaque Apple laptop, and caption/head clearance. Stronger work/thinking/attention motion uses CSS transforms only; no new continuous JavaScript loop is introduced. Native compositor, compact text readability at DPI scales, keyboard interaction and menu placement remain acceptance checks.
+
+Primary implementation references:
+- https://github.com/electron/electron/blob/v44.7.0/lib/browser/api/web-contents.ts#L279-L295
+- https://github.com/electron/electron/blob/v44.7.0/shell/browser/api/electron_api_base_window.cc#L465-L470
+- https://github.com/electron/electron/blob/v44.7.0/shell/browser/native_window_views.cc#L831-L846
+
+## Free sizing and responsive roster (0.2.1)
+
+Final Linux aggregate checks pass: 227 Node + 201 renderer tests (428 desktop) plus 509 unchanged web tests, **937 total**, with no Linux skips. On Windows CI, the symlink-creation audit is explicitly skipped because it may require administrator privileges; no permissions are changed to run it. Both builds and the observer typecheck pass.
+
+The custom lower-right grip uses the existing transparent, non-resizable native window and checked setBounds. Electron explicitly documents that setting resizable:true can break transparent windows. The renderer requests only integer width/height; no position, path, URL, process or raw Electron API is exposed. Main revalidates exact sender/top-frame identity when queued work executes, clamps DIP bounds to minimum/maximum and current monitor work area, and preserves native tray preset behavior while hidden or locked. Free-resize requests require a visible, unlocked live window.
+
+Renderer and main queues coalesce resize input on a 50 ms cadence. The renderer retains at most one in-flight request and one latest target; cancellation and shared error epochs prevent stale gestures/errors from overriding later actions. Keyboard sizing uses 16 DIP steps or 64 with Shift. The renderer reconciles the accepted dimensions after monitor clamping so a subsequent shrink is not stuck behind an oversized request. These are bounded scheduling contracts, not measured native frame-rate claims.
+
+Window geometry alone is persisted in companion-window.json under app userData. Reads are limited to 2 KiB and validated; writes are debounced, use a unique temporary file and atomic replacement, and flush on close. No bridge credentials, agent identities or task text are persisted by this feature. Restoring geometry and display topology/scale/work-area changes clamp size and position, including monitors with negative origins. A small physical work area takes precedence over the usual minimum.
+
+The roster uses auto-fit grid cells (88 DIP compact, 104 DIP roomy), capped portraits, internal scrolling and an explicit 64-illustration limit. Every current agent remains accessible from the full list. IntersectionObserver pauses offscreen artwork; reduced-motion and whole-window visibility pauses remain. Long content is bounded, popups stay above the resize grip, and footer actions reserve grip space. CSS/DOM contracts include narrow, wide, tall, exceptionally small work areas, long labels and many agents. A compact first-row arithmetic budget leaves space inside 260 DIP; this is not a browser pixel measurement.
+
+An updated still uses actual SVG portraits in an illustrative responsive composition and permanently labels itself as a software-rendered concept. It does not establish native window handling or browser layout. Interactive Windows acceptance must include continuous pointer drag, rapid direction changes at work-area limits, keyboard resizing, Escape/capture loss, Compact/Roomy after arbitrary sizes, menu use while sizing, restore after monitor removal, and 100%/150%/200% DPI transitions.
+
+References: https://www.electronjs.org/docs/latest/tutorial/custom-window-styles#limitations ; https://www.electronjs.org/docs/latest/api/screen

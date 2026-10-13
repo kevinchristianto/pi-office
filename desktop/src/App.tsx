@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentPortrait } from "./AgentPortrait";
 import { Icon } from "./Icon";
+import { ProjectFilter } from "./ProjectFilter";
+import { ResizeHandle } from "./ResizeHandle";
 import {
   isBusy,
   needsAttention,
@@ -10,6 +12,9 @@ import {
 } from "./model";
 import { useCompanion } from "./useCompanion";
 import type { CompanionCommand } from "./types";
+
+// Bound SVG work for very large snapshots; the current-agent list remains complete.
+const MAX_ILLUSTRATED_RESIDENTS = 64;
 
 function ResidentStatus({ resident }: { resident: Resident }) {
   return (
@@ -23,7 +28,7 @@ function ResidentStatus({ resident }: { resident: Resident }) {
 }
 
 export function App() {
-  const { state, command, commandError, dismissError } = useCompanion();
+  const { state, command, resize, commandError, dismissError } = useCompanion();
   const { offices, residents } = useMemo(
     () => projectResidents(state.snapshot),
     [state.snapshot],
@@ -31,11 +36,22 @@ export function App() {
   const [project, setProject] = useState("all");
   const [selected, setSelected] = useState<string | null>(null);
   const [listing, setListing] = useState<"history" | "current" | null>(null);
-  const [menu, setMenu] = useState(false);
+  const [dropdown, setDropdown] = useState<"project" | "options" | null>(null);
+  const menu = dropdown === "options";
+  const setProjectOpen = useCallback(
+    (open: boolean) => setDropdown(open ? "project" : null),
+    [],
+  );
   const [notice, setNotice] = useState<string | null>(null);
   const [documentHidden, setDocumentHidden] = useState(document.hidden);
+  const [visibleResidents, setVisibleResidents] =
+    useState<ReadonlySet<string> | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuOpenAtEnd = useRef(false);
+  const menuTabbing = useRef(false);
+  const menuRestoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panelCloseRef = useRef<HTMLButtonElement>(null);
   const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
   const hadPanelRef = useRef(false);
@@ -51,6 +67,50 @@ export function App() {
   const paused = documentHidden || !state.visible || !isLive;
   const panelOpen = !!chosen || !!listing;
   const listResidents = listing === "history" ? history : current;
+  const illustrated = current.slice(0, MAX_ILLUSTRATED_RESIDENTS);
+  const dockIdentities = JSON.stringify(
+    illustrated.map((resident) => resident.key),
+  );
+
+  useEffect(() => {
+    const dock = dockRef.current;
+    if (!dock || typeof IntersectionObserver === "undefined") return;
+    // Scroll/resize observations pause hidden art without polling or a frame loop.
+    let active = true;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!active) return;
+        setVisibleResidents((previous) => {
+          const next = new Set(previous);
+          let changed = false;
+          for (const entry of entries) {
+            const key = (entry.target as HTMLElement).dataset.residentKey;
+            if (!key || next.has(key) === entry.isIntersecting) continue;
+            changed = true;
+            if (entry.isIntersecting) next.add(key);
+            else next.delete(key);
+          }
+          return changed ? next : previous;
+        });
+      },
+      { root: dock, threshold: 0 },
+    );
+    setVisibleResidents(new Set());
+    for (const resident of dock.querySelectorAll(".resident"))
+      observer.observe(resident);
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [dockIdentities, panelOpen, isLive]);
+
+  useEffect(() => {
+    if (!dropdown) return;
+    // A fresh popup must be fully clickable. Dismiss the previous action's
+    // overlay (and invalidate its pending rejection) without changing focus.
+    dismissError();
+    setNotice(null);
+  }, [dropdown]);
 
   useEffect(() => {
     const update = () => setDocumentHidden(document.hidden);
@@ -65,7 +125,11 @@ export function App() {
       setNotice("That agent is no longer in the latest snapshot.");
       lastTriggerRef.current?.isConnected && lastTriggerRef.current.focus();
     }
-  }, [offices, residents, project, selected]);
+    if (dropdown === "project" && offices.length <= 1) {
+      setDropdown(null);
+      menuButtonRef.current?.focus({ preventScroll: true });
+    }
+  }, [offices, residents, project, selected, dropdown]);
   useEffect(() => {
     if (panelOpen) panelCloseRef.current?.focus();
     else if (hadPanelRef.current) {
@@ -85,16 +149,49 @@ export function App() {
   }, [panelOpen, selected, listing]);
   useEffect(() => {
     if (!menu) return;
+    if (menuRestoreTimer.current) clearTimeout(menuRestoreTimer.current);
+    const buttons = menuRef.current?.querySelectorAll<HTMLButtonElement>(
+      "button:not(:disabled)",
+    );
+    (menuOpenAtEnd.current
+      ? buttons?.[buttons.length - 1]
+      : buttons?.[0]
+    )?.focus();
+    menuOpenAtEnd.current = false;
     const outside = (event: PointerEvent) => {
       if (
-        !menuRef.current?.contains(event.target as Node) &&
-        !menuButtonRef.current?.contains(event.target as Node)
-      )
-        setMenu(false);
+        event.target instanceof Node &&
+        !menuRef.current?.contains(event.target) &&
+        !menuButtonRef.current?.contains(event.target)
+      ) {
+        setDropdown(null);
+        menuButtonRef.current?.focus({ preventScroll: true });
+        if (menuRestoreTimer.current) clearTimeout(menuRestoreTimer.current);
+        menuRestoreTimer.current = setTimeout(() => {
+          menuRestoreTimer.current = null;
+          if (document.activeElement === document.body)
+            menuButtonRef.current?.focus({ preventScroll: true });
+        }, 0);
+      }
     };
-    document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
+    const deactivate = () => {
+      if (menuRestoreTimer.current) clearTimeout(menuRestoreTimer.current);
+      setDropdown(null);
+    };
+    document.addEventListener("pointerdown", outside, true);
+    window.addEventListener("blur", deactivate);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      window.removeEventListener("blur", deactivate);
+    };
   }, [menu]);
+
+  useEffect(
+    () => () => {
+      if (menuRestoreTimer.current) clearTimeout(menuRestoreTimer.current);
+    },
+    [],
+  );
 
   function closePanel() {
     if (chosen && listing) setSelected(null);
@@ -106,6 +203,7 @@ export function App() {
   }
   function openResident(resident: Resident, trigger: HTMLButtonElement) {
     if (!listing) lastTriggerRef.current = trigger;
+    setDropdown(null);
     setSelected(resident.key);
     setNotice(null);
   }
@@ -116,10 +214,12 @@ export function App() {
     lastTriggerRef.current = trigger;
     setSelected(null);
     setListing(type);
+    setDropdown(null);
     setNotice(null);
   }
   function run(name: CompanionCommand) {
-    setMenu(false);
+    if (menu) menuButtonRef.current?.focus({ preventScroll: true });
+    setDropdown(null);
     void command(name);
   }
 
@@ -129,7 +229,7 @@ export function App() {
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         if (menu) {
-          setMenu(false);
+          setDropdown(null);
           menuButtonRef.current?.focus();
         } else if (panelOpen) closePanel();
         else {
@@ -171,8 +271,21 @@ export function App() {
             className={`icon-button ${menu ? "is-on" : ""}`}
             aria-label="Companion options"
             aria-expanded={menu}
-            aria-controls="companion-options"
-            onClick={() => setMenu(!menu)}
+            aria-controls={menu ? "companion-options" : undefined}
+            aria-haspopup="dialog"
+            onClick={() =>
+              setDropdown((current) =>
+                current === "options" ? null : "options",
+              )
+            }
+            onKeyDown={(event) => {
+              if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key))
+                return;
+              event.preventDefault();
+              menuOpenAtEnd.current =
+                event.key === "ArrowUp" || event.key === "End";
+              setDropdown("options");
+            }}
           >
             <Icon name="menu" />
           </button>
@@ -183,8 +296,44 @@ export function App() {
         <div
           ref={menuRef}
           id="companion-options"
-          className="options-panel"
-          aria-label="Companion options"
+          className="options-panel dropdown-surface"
+          role="dialog"
+          aria-label="Window options"
+          onBlur={(event) => {
+            if (
+              !event.currentTarget.contains(event.relatedTarget) &&
+              (menuTabbing.current ||
+                event.relatedTarget !== menuButtonRef.current)
+            )
+              setDropdown(null);
+            menuTabbing.current = false;
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Tab") menuTabbing.current = true;
+            if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key))
+              return;
+            event.preventDefault();
+            event.stopPropagation();
+            const buttons = [
+              ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                "button:not(:disabled)",
+              ),
+            ];
+            const index = buttons.indexOf(
+              document.activeElement as HTMLButtonElement,
+            );
+            const next =
+              event.key === "Home"
+                ? 0
+                : event.key === "End"
+                  ? buttons.length - 1
+                  : (index +
+                      (event.key === "ArrowDown" ? 1 : -1) +
+                      buttons.length) %
+                    buttons.length;
+            buttons[next]?.focus({ preventScroll: true });
+            buttons[next]?.scrollIntoView?.({ block: "nearest" });
+          }}
         >
           <div className="menu-label">YOUR LITTLE WINDOW</div>
           <button
@@ -223,7 +372,7 @@ export function App() {
       )}
 
       {state.bridge?.error && (
-        <p role="alert" className="menu-note">
+        <p role="alert" className="menu-note bridge-error">
           {state.bridge.error}
         </p>
       )}
@@ -231,7 +380,7 @@ export function App() {
         {!panelOpen && (
           <>
             <div className="office-heading">
-              <div>
+              <div className="office-heading-copy">
                 <h1>
                   {isLive
                     ? current.length
@@ -247,7 +396,7 @@ export function App() {
                   {isLive
                     ? current.length === 0 && state.bridge?.mode === "owned"
                       ? "Choose Connect Pi from the options menu"
-                      : `${current.length} current · ${busy} busy${attention ? ` · ${attention} needs attention` : ""}`
+                      : `${current.length} current · ${busy} busy${attention ? ` · ${attention} needs attention` : ""}${current.length > MAX_ILLUSTRATED_RESIDENTS ? ` · Showing ${MAX_ILLUSTRATED_RESIDENTS} of ${current.length}` : ""}`
                     : state.connection.status === "connecting"
                       ? "Connecting to the local office bridge"
                       : state.connection.status === "paused"
@@ -256,23 +405,23 @@ export function App() {
                 </p>
               </div>
               {offices.length > 1 && (
-                <label className="project-filter">
-                  <span className="sr-only">Filter by project</span>
-                  <select
-                    value={project}
-                    onChange={(event) => {
-                      setProject(event.target.value);
-                      setNotice(null);
-                    }}
-                  >
-                    <option value="all">All projects</option>
-                    {offices.map((office) => (
-                      <option key={office.id} value={office.id}>
-                        {office.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <ProjectFilter
+                  value={project}
+                  open={dropdown === "project"}
+                  onOpenChange={setProjectOpen}
+                  options={[
+                    { value: "all", label: "All projects" },
+                    ...offices.map((office) => ({
+                      value: office.id,
+                      label: office.name,
+                      description: office.cwd,
+                    })),
+                  ]}
+                  onChange={(value) => {
+                    setProject(value);
+                    setNotice(null);
+                  }}
+                />
               )}
               {isLive && offices.length === 1 && (
                 <span className="single-project" title={offices[0].cwd}>
@@ -283,7 +432,8 @@ export function App() {
 
             {isLive && current.length > 0 ? (
               <div
-                className={`agent-dock roster-${Math.min(current.length, 8)}`}
+                ref={dockRef}
+                className={`agent-dock${current.length <= 3 ? " is-sparse" : ""}`}
                 aria-label="Current agents"
               >
                 <div className="dock-scenery" aria-hidden="true">
@@ -296,28 +446,25 @@ export function App() {
                   </span>
                   <span className="shelf" />
                 </div>
-                {current.slice(0, 8).map((resident) => (
+                {illustrated.map((resident) => (
                   <button
                     className={`resident ${needsAttention(resident) ? "needs-attention" : ""}`}
                     key={resident.key}
                     data-resident-key={resident.key}
+                    data-in-viewport={
+                      visibleResidents === null ||
+                      visibleResidents.has(resident.key)
+                    }
                     aria-label={`${resident.agent.name}, ${stateLabel(resident.agent.state)}, ${resident.project}`}
                     onClick={(event) =>
                       openResident(resident, event.currentTarget)
                     }
                     title={`${resident.agent.name} · ${resident.project}\n${resident.agent.task || stateLabel(resident.agent.state)}`}
                   >
-                    {needsAttention(resident) && (
-                      <span
-                        className={`attention-bubble ${resident.agent.state === "error" ? "attention-error" : ""}`}
-                        aria-hidden="true"
-                      >
-                        {resident.agent.state === "error" ? "!" : "?"}
-                      </span>
-                    )}
                     <AgentPortrait
                       identity={resident.key}
                       state={resident.agent.state}
+                      connected={isLive}
                     />
                     <span className="resident-name">{resident.agent.name}</span>
                     <span
@@ -398,6 +545,7 @@ export function App() {
                   <AgentPortrait
                     identity={chosen.key}
                     state={chosen.agent.state}
+                    connected={isLive}
                     historical={chosen.historical}
                   />
                 </div>
@@ -505,7 +653,7 @@ export function App() {
               onClick={(event) => openListing("current", event.currentTarget)}
               aria-label={`View all ${current.length} current agents`}
             >
-              +{current.length - 8} more
+              All {current.length}
             </button>
           )}
           {history.length > 0 && (
@@ -542,6 +690,7 @@ export function App() {
           </button>
         </div>
       )}
+      <ResizeHandle state={state} resize={resize} />
     </main>
   );
 }

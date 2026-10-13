@@ -1,0 +1,61 @@
+.resize-handle {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border: 0;
+  border-radius: 8px 0 15px 0;
+  background: transparent;
+  color: #8b806b;
+  cursor: nwse-resize;
+  touch-action: none;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+.resize-handle:hover,
+.resize-handle.is-resizing {
+  color: #52613e;
+  background: #e7e8d8;
+}
+.resize-handle:focus-visible {
+  outline: 2px solid #78875b;
+  outline-offset: -3px;
+  background: #e7e8d8;
+}
+.resize-handle:disabled {
+  pointer-events: none;
+  opacity: 0.25;
+}
+.resize-handle-grip {
+  width: 13px;
+  height: 13px;
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 3px,
+    currentColor 3px 4.5px,
+    transparent 4.5px 6px
+  );
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+.resize-handle-help {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+@media (forced-colors: active) {
+  .resize-handle {
+    color: ButtonText;
+    border: 1px solid ButtonText;
+  }
+}

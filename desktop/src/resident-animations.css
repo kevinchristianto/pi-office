@@ -1,0 +1,272 @@
+/* Expressive poses share the original keyboard and foreground-lid geometry.
+   No frame clock, layout animation or remount is needed as snapshots arrive.
+   Specificity keeps these overrides independent of stylesheet import order. */
+.resident-art .resident-status-bubble {
+  pointer-events: none;
+}
+.resident-art .resident-status-surface,
+.resident-art .resident-status-tail {
+  fill: #f2f3e9;
+  stroke: #b8c2a4;
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+.resident-art .resident-status-text {
+  fill: #536344;
+  font-family: "Office system", "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+}
+.resident-art.activity-waiting .resident-status-surface,
+.resident-art.activity-waiting .resident-status-tail {
+  fill: #fff2d9;
+  stroke: #ccb780;
+}
+.resident-art.activity-waiting .resident-status-text {
+  fill: #826323;
+}
+.resident-art.activity-error .resident-status-surface,
+.resident-art.activity-error .resident-status-tail {
+  fill: #f9e9e2;
+  stroke: #d3a795;
+}
+.resident-art.activity-error .resident-status-text {
+  fill: #975a47;
+}
+.resident-art.activity-static .resident-status-surface,
+.resident-art.activity-static .resident-status-tail {
+  fill: #f0eee7;
+  stroke: #cbc5b8;
+}
+.resident-art.activity-static .resident-status-text {
+  fill: #797264;
+}
+/* Elbows move visibly; the small, existing palm envelope still meets the keys. */
+.resident-art.activity-working .resident-torso {
+  animation: resident-work-shoulders 2.8s ease-in-out infinite;
+}
+.resident-art.activity-working .resident-head {
+  animation: resident-work-look 2.8s ease-in-out infinite;
+}
+.resident-art.activity-working .typing-arm-left {
+  animation: resident-type-arm-left-expressive 0.56s ease-in-out infinite;
+}
+.resident-art.activity-working .typing-arm-right {
+  animation: resident-type-arm-right-expressive 0.56s ease-in-out infinite;
+}
+.resident-art.activity-working .typing-hand-left {
+  animation: resident-type-hand-left 0.56s ease-in-out infinite;
+}
+.resident-art.activity-working .typing-hand-right {
+  animation: resident-type-hand-right 0.56s ease-in-out infinite;
+}
+.resident-art.activity-working .typing-fingers-left,
+.resident-art.activity-working .typing-fingers-right {
+  animation: resident-finger-tap 0.28s ease-in-out infinite;
+}
+.resident-art.activity-working .typing-fingers-right {
+  animation-delay: -0.14s;
+}
+.resident-art.activity-thinking .resident-head {
+  animation: resident-ponder-expressive 3.8s ease-in-out infinite;
+}
+.resident-art.activity-thinking .thinking-arm {
+  animation: resident-chin-expressive 3.8s ease-in-out infinite;
+}
+.resident-art.activity-thinking .thought-bubbles {
+  animation: resident-thought-expressive 3.8s ease-in-out infinite;
+}
+.resident-art.activity-waiting .resident-head {
+  animation: resident-attention-look 3.2s ease-in-out infinite;
+}
+.resident-art.activity-waiting .waiting-arm {
+  animation: resident-request-expressive 3.2s ease-in-out infinite;
+}
+.resident-art.activity-waiting .waiting-hand {
+  animation: resident-request-palm-expressive 3.2s ease-in-out infinite;
+}
+.resident-art.activity-error .resident-head {
+  animation: resident-concern-expressive 4.6s ease-in-out infinite;
+}
+.resident-art.activity-error .error-arm {
+  animation: resident-temple-expressive 4.6s ease-in-out infinite;
+}
+/* A frozen frame never implies continuing work during transport loss/history. */
+.resident-art.activity-static * {
+  animation: none !important;
+}
+.is-paused .resident-art * {
+  animation-play-state: paused !important;
+}
+@keyframes resident-work-shoulders {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  40% {
+    transform: scaleY(1.055);
+  }
+  70% {
+    transform: scaleY(1.015);
+  }
+}
+@keyframes resident-work-look {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(-3deg);
+  }
+  40% {
+    transform: translate(0, 1.4px) rotate(5deg);
+  }
+  70% {
+    transform: translate(0, 0.4px) rotate(1deg);
+  }
+}
+@keyframes resident-type-arm-left-expressive {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-8deg);
+  }
+  75% {
+    transform: rotate(-2.5deg);
+  }
+}
+@keyframes resident-type-arm-right-expressive {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(2.5deg);
+  }
+  75% {
+    transform: rotate(8deg);
+  }
+}
+@keyframes resident-ponder-expressive {
+  0%,
+  100% {
+    transform: rotate(-2deg);
+  }
+  38%,
+  58% {
+    transform: rotate(-12deg);
+  }
+  78% {
+    transform: rotate(-5deg);
+  }
+}
+@keyframes resident-chin-expressive {
+  0%,
+  100% {
+    transform: rotate(17deg);
+  }
+  38%,
+  58% {
+    transform: rotate(-2deg);
+  }
+  78% {
+    transform: rotate(7deg);
+  }
+}
+@keyframes resident-thought-expressive {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(0.72);
+    opacity: 0.45;
+  }
+  38%,
+  58% {
+    transform: translate(0, -1px) scale(1);
+    opacity: 1;
+  }
+  78% {
+    transform: translate(0, 0) scale(0.87);
+    opacity: 0.7;
+  }
+}
+@keyframes resident-attention-look {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  14% {
+    transform: rotate(-6deg);
+  }
+  28% {
+    transform: rotate(4deg);
+  }
+}
+@keyframes resident-request-expressive {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  14% {
+    transform: rotate(-12deg);
+  }
+  28% {
+    transform: rotate(9deg);
+  }
+  40% {
+    transform: rotate(-5deg);
+  }
+}
+@keyframes resident-request-palm-expressive {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  14% {
+    transform: rotate(-16deg);
+  }
+  28% {
+    transform: rotate(13deg);
+  }
+  40% {
+    transform: rotate(-8deg);
+  }
+}
+@keyframes resident-concern-expressive {
+  0%,
+  55%,
+  100% {
+    transform: rotate(0deg);
+  }
+  16% {
+    transform: rotate(-7deg);
+  }
+  32% {
+    transform: rotate(5deg);
+  }
+}
+@keyframes resident-temple-expressive {
+  0%,
+  55%,
+  100% {
+    transform: rotate(0deg);
+  }
+  16% {
+    transform: rotate(-6deg);
+  }
+  32% {
+    transform: rotate(4deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .resident-art *,
+  .resident-art *::before,
+  .resident-art *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

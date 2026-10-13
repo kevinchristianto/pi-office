@@ -8,6 +8,7 @@ const path = require("node:path");
 const { crc32 } = require("node:zlib");
 const {
   createConfiguration,
+  SHELL_FILES,
   validatePortableCompilerOptions,
 } = require("../packaging/config.cjs");
 const {
@@ -61,8 +62,18 @@ test("NSIS compiler verification enforces per-launch extraction, x64 and no elev
 
 test("package includes shell helpers, separate web office, bridge, observer and notices", () => {
   const config = createConfiguration(path.resolve(__dirname, ".."));
-  assert(config.files.includes("*.cjs"));
-  assert(config.files.includes("!package.cjs"));
+  assert.deepEqual(SHELL_FILES, [
+    "bridge-runtime.cjs",
+    "bridge-worker.cjs",
+    "core.cjs",
+    "main.cjs",
+    "observer-connect.cjs",
+    "preload.cjs",
+    "window-geometry.cjs",
+  ]);
+  assert.deepEqual(config.files, [...SHELL_FILES, "package.json", "dist/**/*"]);
+  assert(!config.files.includes("*.cjs"));
+  assert(!config.files.includes("package.cjs"));
   assert(config.files.includes("dist/**/*"));
   assert(!config.files.includes("**/*"));
   assert.deepEqual(

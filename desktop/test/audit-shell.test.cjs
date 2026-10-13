@@ -96,6 +96,9 @@ function fakeElectron({
     setSize(width, height) {
       Object.assign(this.bounds, { width, height });
     }
+    setBounds(bounds) {
+      this.bounds = { ...bounds };
+    }
     setPosition(x, y) {
       Object.assign(this.bounds, { x, y });
     }
@@ -117,9 +120,9 @@ function fakeElectron({
     blur() {
       this.focused = false;
     }
-    async loadFile(filename) {
+    async loadURL(url) {
       this.loadCount++;
-      this.webContents.mainFrame.url = pathToFileURL(filename).href;
+      this.webContents.mainFrame.url = url;
     }
   }
   class Tray extends EventEmitter {
@@ -472,12 +475,30 @@ test("audit: preload exposes only narrow frozen methods and strips privileged ev
     "command",
     "getState",
     "onState",
+    "resize",
   ]);
   assert.equal(Object.isFrozen(exposed), true);
   await exposed.getState("ignored malicious argument");
   await exposed.command("open-office", "https://evil.example/");
   await assert.rejects(exposed.command("https://evil.example/"));
   assert.deepEqual(calls, [[IPC.state], [IPC.command, "open-office"]]);
+  await exposed.resize(750, 420, "ignored extra renderer argument");
+  assert.deepEqual(structuredClone(calls.at(-1)), [
+    IPC.resize,
+    { width: 750, height: 420 },
+  ]);
+  for (const value of [
+    NaN,
+    Infinity,
+    -1,
+    0,
+    440.5,
+    "440",
+    {},
+    Number.MAX_SAFE_INTEGER + 1,
+  ])
+    await assert.rejects(exposed.resize(value, 300), /positive integer/);
+  assert.equal(calls.length, 3);
   const received = [];
   const unsubscribe = exposed.onState((...args) => received.push(args));
   const privileged = { sender: { executeJavaScript() {} } };

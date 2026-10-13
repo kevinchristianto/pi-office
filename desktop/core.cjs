@@ -44,16 +44,36 @@ function isAllowedCommand(value) {
   return typeof value === "string" && COMMANDS.includes(value);
 }
 
+function rendererFile(url) {
+  // Compare one exact local file, not URL serialization or a directory prefix.
+  // Chromium uppercases Windows drive letters; Node preserves their case.
+  // Reject even empty query/fragment delimiters and encoded path separators.
+  if (
+    typeof url !== "string" ||
+    !url.startsWith("file:///") ||
+    /[?#\\\u0000-\u0020\u007f]/.test(url) ||
+    /%(?:2f|5c)/i.test(url)
+  )
+    return null;
+  const parsed = new URL(url);
+  if (parsed.protocol !== "file:" || parsed.host) return null;
+  return fileURLToPath(parsed).replace(/^[a-z]:\\/, (drive) =>
+    drive.toUpperCase(),
+  );
+}
+
 function isTrustedSender(event, window, rendererUrl) {
-  if (!window || window.isDestroyed() || window.webContents.isDestroyed())
-    return false;
-  const contents = window.webContents;
   try {
+    if (!window || window.isDestroyed() || window.webContents.isDestroyed())
+      return false;
+    const contents = window.webContents;
+    const expectedFile = rendererFile(rendererUrl);
     return (
+      expectedFile !== null &&
       event.sender === contents &&
       event.senderFrame === contents.mainFrame &&
-      event.senderFrame?.url === rendererUrl &&
-      contents.getURL() === rendererUrl
+      rendererFile(event.senderFrame?.url) === expectedFile &&
+      rendererFile(contents.getURL()) === expectedFile
     );
   } catch {
     return false;
